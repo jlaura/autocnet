@@ -330,7 +330,7 @@ class Measures(BaseMixin, Base):
         self._measuretype = v
 
 if Session:
-    from autocnet.io.db.triggers import valid_point_function, valid_point_trigger
+    from autocnet.io.db.triggers import valid_point_function, valid_point_trigger, valid_geom_function, valid_geom_trigger
     # Create the database
     if not database_exists(engine.url):
         create_database(engine.url, template='template_postgis')  # This is a hardcode to the local template
@@ -339,6 +339,8 @@ if Session:
         # based on the point count.
         event.listen(Base.metadata, 'before_create', valid_point_function)
         event.listen(Measures.__table__, 'after_create', valid_point_trigger)
+        event.listen(Base.metadata, 'before_create', validate_geom_function)
+        event.listen(Images.__table__, 'after_create', valid_geom, trigger)
 
     Base.metadata.bind = engine
     # If the table does not exist, this will create it. This is used in case a
