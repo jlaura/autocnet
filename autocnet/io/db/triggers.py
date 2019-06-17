@@ -4,11 +4,12 @@ valid_geom_function = DDL("""
 CREATE OR REPLACE FUNCTION validate_geom()
   RETURNS trigger AS
 $BODY$
-BEGIN
-    NEW.footprint_latlon = ST_MAKEVALID(NEW.footprint_latlon);
+  BEGIN
+      NEW.footprint_latlon = ST_MAKEVALID(NEW.footprint_latlon);
+      RETURN NEW;
     EXCEPTION WHEN OTHERS THEN
       NEW.active = false;
-  RETURN NEW;
+      RETURN NEW;
 END;
 $BODY$
 
@@ -18,7 +19,7 @@ COST 100; -- Estimated execution cost of the function.
 
 valid_geom_trigger = DDL("""
 CREATE TRIGGER image_inserted
-  BEFORE INSERT
+  BEFORE INSERT OR UPDATE
   ON images
   FOR EACH ROW
 EXECUTE PROCEDURE validate_geom();
