@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import scipy
 from matplotlib import pyplot as plt
-from scipy.misc import imresize
+from skimage.transform import imresize
 from sqlalchemy import (Boolean, Column, Float, ForeignKey, Integer,
                         LargeBinary, String, UniqueConstraint, create_engine,
                         event, orm, pool)
