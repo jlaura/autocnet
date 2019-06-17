@@ -1537,7 +1537,7 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         elif os.path.exists(filelist):
             filelist = io_utils.file_to_list(filelist)
         else:
-            warning.warn('Unable to parse the passed filelist')
+            warnings.warn('Unable to parse the passed filelist')
 
         for f in filelist:
             # Create the nodes in the graph. Really, this is creating the

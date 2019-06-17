@@ -1,42 +1,25 @@
 import ctypes
-import enum
-import glob
-import json
-import os
-import os.path
-import socket
 from ctypes.util import find_library
+import os
 
 import numpy as np
 import pandas as pd
-import scipy
-from matplotlib import pyplot as plt
-from scipy.misc import imresize
-from sqlalchemy import (Boolean, Column, Float, ForeignKey, Integer,
-                        LargeBinary, String, UniqueConstraint, create_engine,
-                        event, orm, pool)
-from sqlalchemy.ext.declarative import declarative_base
+from skimage.transform import resize
 
-import geoalchemy2
 import geopandas as gpd
 import plio
 import pvl
 import pyproj
-import pysis
-from autocnet import config
+
 from autocnet.graph.network import NetworkCandidateGraph
+from autocnet.io.db.connection import new_connection
 from autocnet.matcher.subpixel import iterative_phase
+
 from autocnet import engine
-from gdal import ogr
-from geoalchemy2 import Geometry, WKTElement
-from geoalchemy2.shape import to_shape
-from knoten import csm
-from plio.io.io_controlnetwork import from_isis, to_isis
+from plio.io.io_controlnetwork import from_isis
 from plio.io.io_gdal import GeoDataset
 from pysis.exceptions import ProcessError
 from pysis.isis import campt
-from shapely import wkt
-from shapely.geometry.multipolygon import MultiPolygon
 
 from autocnet import engine
 
@@ -54,14 +37,13 @@ def themis_ground_to_ctx_matcher(cnet):
 
     # Get ground images from database, in this case THEMIS
     # hardcoded for now until we can finalize our databases
-    db_uri = '{}://{}:{}@{}:{}/{}'.format('postgresql',
-                                          'jay',
-                                          'abcde',
-                                          'smalls',
-                                          '8083',
-                                          'mars')
-    themis_engine = create_engine(db_uri, poolclass=pool.NullPool,
-                           isolation_level="AUTOCOMMIT")
+
+    themis_db = {'database':{'username':'jay',
+                             'password':'abcde',
+                             'host':'smalls',
+                             'pg_bounder_port':8083,
+                             'name':'mars'}}
+    _, themis_engine = new_connection(themis_db)
 
     themis_images = gpd.GeoDataFrame.from_postgis("select * from themis_ir", themis_engine, geom_col="footprint_latlon")
 
@@ -151,7 +133,7 @@ def themis_ground_to_ctx_matcher(cnet):
             scaled_ctx_line = (ctx_arr.shape[0]-ctx_line)*ctx_to_themis_scale
             scaled_ctx_sample = ctx_sample*ctx_to_themis_scale
 
-            ctx_arr = imresize(ctx_arr, ctx_to_themis_scale)[::-1]
+            ctx_arr = resize(ctx_arr, ctx_to_themis_scale)[::-1]
 
             # list of matching results in the format:
             # [measure_index, x_offset, y_offset, offset_magnitude]
