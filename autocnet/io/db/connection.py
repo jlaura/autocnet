@@ -12,12 +12,19 @@ import yaml
 
 class Parent:
     def __init__(self, config):
-        self.session, _ = new_connection(config)
+        self.session, _ = new_connection(config['database'])
         self.session.begin()
 
-def new_connection(config):
+def new_connection(db):
     """
     Using the user supplied config create a NullPool database connection.
+
+    Parameters
+    ----------
+    db : dict
+         in the form {'username':username, 'password': password,
+                      'host':db hostname, 'pgbouncer_port': database port,
+                      'name': database name}
 
     Returns
     -------
@@ -27,7 +34,6 @@ def new_connection(config):
     engine : object
              An SQLAlchemy engine object
     """
-    db = config['database']
     db_uri = 'postgresql://{}:{}@{}:{}/{}'.format(db['username'],
                                                   db['password'],
                                                   db['host'],
@@ -36,4 +42,4 @@ def new_connection(config):
     engine = sqlalchemy.create_engine(db_uri,
                                       poolclass=sqlalchemy.pool.NullPool)
     Session = sqlalchemy.orm.sessionmaker(bind=engine, autocommit=True)
-    return Session(), engine
+    return Session, engine

@@ -3,6 +3,9 @@ import warnings
 import yaml
 import socket
 
+# This gets the usgscsm loaded
+import knoten
+
 from sqlalchemy import create_engine, pool, orm
 from sqlalchemy.event import listen
 
