@@ -5,7 +5,7 @@ import sqlalchemy
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import (Column, String, Integer, Float, \
                         ForeignKey, Boolean, LargeBinary, \
-                        UniqueConstraint, event)
+                        UniqueConstraint, event, DateTime)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy_utils import database_exists, create_database
@@ -269,13 +269,50 @@ class PointType(enum.IntEnum):
 
 class Points(BaseMixin, Base):
     __tablename__ = 'points'
+    # This is a unique DB key
     id = Column(Integer, primary_key=True, autoincrement=True)
     _pointtype = Column("pointtype", IntEnum(PointType), nullable=False)  # 2, 3, 4 - Could be an enum in the future, map str to int in a decorator
+    # This is the user definable identifier
     identifier = Column(String, unique=True)
-    _geom = Column("geom", Geometry('POINT', srid=latitudinal_srid, dimension=2, spatial_index=True))
+
+    # This is outside the specification but nice to have for vis
+    _geom = Column("geom", Geometry('POINT', srid=srid, dimension=2, spatial_index=True))
+     _geom = Column("geom", Geometry('POINT', srid=latitudinal_srid, dimension=2, spatial_index=True))
     active = Column(Boolean, default=True)
     _apriori = Column("apriori", Geometry('POINTZ', srid=rectangular_srid, dimension=3, spatial_index=False))
     _adjusted = Column("adjusted", Geometry('POINTZ', srid=rectangular_srid, dimension=3, spatial_index=False))
+    
+    choosername = Column(String)
+    datetime = Column(DateTime)
+    editLock = Column(Boolean)
+    ignore = Column(Boolean)
+    jigsawrejected = Column(Boolean)
+    referenceindex = Column(Integer)
+    # Our own, is this point live field
+    active = Column(Boolean, default=True)
+    
+    # Provenance
+    apriori_surfacepointsource = Column(Integer)
+    apriori_surfacepointfile = Column(String)
+    apriori_radiussource = Column(Integer)
+    apriori_radiussourcefile = Column(String)
+    
+    # Constraints
+    latitudeconstrained = Column(Boolean)
+    longitudeconstrained = Column(Boolean)
+    radiusconstrained = Column(Boolean)
+    
+    # Initial and adjusted locations
+    apriorix = Column(Float)
+    aprioriy = Column(Float)
+    aprioriz = Column(Float)
+    aprioricovar = Column(ArrayType())
+
+    adjustedx = Column(Float)
+    adjustedy = Column(Float)
+    adjustedz = Column(Float)
+    adjustedcovar = Column(ArrayType())
+    
     measures = relationship('Measures')
 
     @hybrid_property
@@ -347,14 +384,21 @@ class Measures(BaseMixin, Base):
     id = Column(Integer,primary_key=True, autoincrement=True)
     pointid = Column(Integer, ForeignKey('points.id'), nullable=False)
     imageid = Column(Integer, ForeignKey('images.id'))
+    
     serial = Column(String, nullable=False)
     _measuretype = Column("measuretype", IntEnum(MeasureType), nullable=False)  # [0,3]  # Enum as above
     sample = Column(Float, nullable=False)
     line = Column(Float, nullable=False)
     sampler = Column(Float)  # Sample Residual
     liner = Column(Float)  # Line Residual
-    active = Column(Boolean, default=True)
+    choosername = Column(String)
+    datetime = Column(DateTime)
+    editlock = Column(Boolean)
+    ignore = Column(Boolean)
     jigreject = Column(Boolean, default=False)  # jigsaw rejected
+    active = Column(Boolean, default=True)
+
+    diameter = Column(Float)
     aprioriline = Column(Float)
     apriorisample = Column(Float)
     samplesigma = Column(Float)
