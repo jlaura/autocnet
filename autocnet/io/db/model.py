@@ -267,6 +267,16 @@ class PointType(enum.IntEnum):
     constrained = 3
     fixed = 4
 
+class AprioriSource(enum.IntEnum):
+    none = 0
+    user = 1
+    averageofmeasures = 2
+    reference = 3
+    ellipsoid = 4
+    dem = 5
+    basemap = 6
+    bundlesolution = 7
+
 class Points(BaseMixin, Base):
     __tablename__ = 'points'
     # This is a unique DB key
@@ -292,9 +302,9 @@ class Points(BaseMixin, Base):
     active = Column(Boolean, default=True)
     
     # Provenance
-    apriori_surfacepointsource = Column(Integer)
+    apriori_surfacepointsource = Column(IntEnum(AprioriSource), default=0)
     apriori_surfacepointfile = Column(String)
-    apriori_radiussource = Column(Integer)
+    apriori_radiussource = Column(IntEnum(AprioriSource), default=0)
     apriori_radiussourcefile = Column(String)
     
     # Constraints
