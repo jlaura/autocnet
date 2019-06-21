@@ -17,6 +17,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from geoalchemy2 import Geometry
 from geoalchemy2.shape import from_shape, to_shape
 
+import pyproj
 import osgeo
 import shapely
 from autocnet import engine, Session, config
@@ -263,14 +264,25 @@ class Points(BaseMixin, Base):
     identifier = Column(String, unique=True)
     _geom = Column("geom", Geometry('POINT', srid=srid, dimension=2, spatial_index=True))
     active = Column(Boolean, default=True)
-    apriorix = Column(Float)
-    aprioriy = Column(Float)
-    aprioriz = Column(Float)
+    _apriorix = Column("apriorix", Float, default=0)
+    _aprioriy = Column("aprioriy", Float, default=0)
+    _aprioriz = Column("aprioriz", Float, default=0)
     adjustedx = Column(Float)
     adjustedy = Column(Float)
     adjustedz = Column(Float)
     measures = relationship('Measures')
-    rms = Column(Float)
+
+    def update_apriori_geom(self, x, y):
+        ecef = pyproj.Proj(proj='geocent',
+			               a=config['spatial']['semimajor_rad'],
+			               b=config['spatial']['semiminor_rad'])
+        lla = pyproj.Proj(proj='longlat',
+			              a=config['spatial']['semimajor_rad'],
+			              b=config['spatial']['semiminor_rad'])
+        x, y, z = pyproj.transform(lla, ecef, x, y, 0)
+        self.apriorix = x
+        self.aprioriy = y
+        self.aprioriz = z
 
     @hybrid_property
     def geom(self):
@@ -283,6 +295,8 @@ class Points(BaseMixin, Base):
     def geom(self, geom):
         if geom:
             self._geom = from_shape(geom, srid=srid)
+            # Update the apriorix, y, z
+            self.update_apriori_geom(geom.x, geom.y)
 
     @hybrid_property
     def pointtype(self):
@@ -293,6 +307,31 @@ class Points(BaseMixin, Base):
         if isinstance(v, int):
             v = PointType(v)
         self._pointtype = v
+    
+    @hybrid_property
+    def apriorix(self):
+        return self._apriorix
+
+    @apriorix.setter
+    def apriorix(self, v):
+        self._apriorix = v
+
+    @hybrid_property
+    def aprioriy(self):
+        return self._aprioriy
+
+    @aprioriy.setter
+    def aprioriy(self, v):
+        self._aprioriy = v
+
+    @hybrid_property
+    def aprioriz(self):
+        return self._aprioriz
+
+    @aprioriy.setter
+    def aprioriz(self, v):
+        self._aprioriz = v
+    
 
 class MeasureType(enum.IntEnum):
     """

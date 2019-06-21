@@ -123,6 +123,16 @@ def test_create_point(session, data):
     resp = session.query(model.Points).filter(model.Points.id == p.id).first()
     assert p == resp
 
+@pytest.mark.parametrize("data, expected", [
+    ({'pointtype':2, 'geom':Point(0,0)}, [3396190.0, 0, 0]),
+    ({'pointtype':2, 'geom':Point(90,0)},[0, 10, 0])
+])
+def test_point_apriori(session, data, expected):
+    p = model.Points.create(session, **data)
+    resp = session.query(model.Points).filter(model.Points.id == p.id).first()
+    for i, f in enumerate(['apriorix', 'aprioriy', 'aprioriz']):
+        assert pytest.approx(getattr(resp, f), rel=1e-10) == expected[i]
+
 def test_measures_exists(tables):
     assert model.Measures.__tablename__ in tables
 
