@@ -80,3 +80,4 @@ def test_voronoi_keypoint_intersection(keypoints):
 def test_points_in_geom(polygon, nexpected):
     pts = cg.distribute_points_in_geom(polygon)
     assert len(pts) == nexpected
+    
