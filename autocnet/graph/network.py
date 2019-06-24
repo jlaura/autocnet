@@ -450,9 +450,9 @@ class CandidateGraph(nx.Graph):
                 of nodes to load features for.  If empty, load features
                 for all nodes
         """
-        self.apply(Nodes.load_features, args=(in_path, nfeatures), on='node', **kwargs)
+        self.apply(Node.load_features, args=(in_path, nfeatures), on='node', **kwargs)
         for n in self.nodes:
-            if node['node_id'] not in nodes:
+            if n['node_id'] not in nodes:
                 continue
             else:
                 n.load_features(in_path, **kwargs)
