@@ -12,7 +12,7 @@ from autocnet.io.db.redis_queue import pop_computetime_push, finalize
 from autocnet.io.db.model import Overlay, Images
 from autocnet.spatial.overlap import place_points_in_overlap
 from autocnet.graph.node import NetworkNode
-from autocnet import Session
+from autocnet import Session, dem
 
 from plio.io.io_gdal import GeoDataset
 
@@ -37,15 +37,11 @@ def main(msg, config):
     for id in overlap.intersections:
         res = session.query(Images).filter(Images.id == id).first()
         nodes.append(NetworkNode(node_id=id, image_path=res.path))
-    if 'dem' in config['spatial']:
-        dem = config['spatial']['dem']
-        gd = GeoDataset(dem)
-    else:
-        gd = None
 
     print('Placing points in overlap', id)
-    points = place_points_in_overlap(nodes, overlap.geom, gd, msg["cam_type"],
-                                     msg['iterative_phase_kwargs'])
+    points = place_points_in_overlap(nodes, overlap.geom, dem, msg["cam_type"],
+                                     msg['iterative_phase_kwargs'],
+                                     msg['distribute_points_kwargs'])
     session.add_all(points)
     session.commit()
     session.close()

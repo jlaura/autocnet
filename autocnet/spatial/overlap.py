@@ -75,6 +75,7 @@ def place_points_in_overlaps(nodes, size_threshold=0.0007,
 
 def cluster_place_points_in_overlaps(size_threshold=0.0007,
                                      iterative_phase_kwargs={'size':71},
+                                     distribute_points_kwargs={},
                                      walltime='00:10:00', cam_type="csm"):
     """
     Place points in all of the overlap geometries by back-projecing using
@@ -111,6 +112,7 @@ def cluster_place_points_in_overlaps(size_threshold=0.0007,
     for overlap in overlaps:
         msg = {'id' : overlap.id,
                'iterative_phase_kwargs' : iterative_phase_kwargs,
+               'distribute_points_kwargs' : distribute_points_kwargs,
                'walltime' : walltime,
                'cam_type': cam_type}
         rqueue.rpush(queuename, json.dumps(msg))
