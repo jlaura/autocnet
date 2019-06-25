@@ -9,7 +9,7 @@ from redis import StrictRedis
 import yaml
 
 from autocnet.io.db.redis_queue import pop_computetime_push, finalize
-from autocnet.io.db.model import Overlay, Images
+from autocnet.io.db.model import Overlay, Images, Points
 from autocnet.spatial.overlap import place_points_in_overlap
 from autocnet.graph.node import NetworkNode
 from autocnet import Session, dem
@@ -42,9 +42,9 @@ def main(msg, config):
     points = place_points_in_overlap(nodes, overlap.geom, dem, msg["cam_type"],
                                      msg['iterative_phase_kwargs'],
                                      msg['distribute_points_kwargs'])
-    session.add_all(points)
-    session.commit()
-    session.close()
+    
+    print('Adding {} points to the database.'.format(len(points)))
+    Points.bulkadd(points)
 
 if __name__ == '__main__':
     conf = config['redis']
