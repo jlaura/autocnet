@@ -7,7 +7,7 @@ import shapely
 import sqlalchemy
 from plio.io.io_gdal import GeoDataset
 
-from autocnet import config, Session, engine
+from autocnet import config, dem
 from autocnet.cg import cg as compgeom
 from autocnet.io.db.model import Images, Measures, Overlay, Points
 from autocnet.matcher.subpixel import iterative_phase
@@ -38,8 +38,9 @@ INSERT INTO overlay(intersections, geom) SELECT row.intersections, row.geom FROM
   FROM iid GROUP BY iid.geom) AS row WHERE array_length(intersections, 1) > 1;
 """
 
-def place_points_in_overlaps(cg, size_threshold=0.0007,
-                             iterative_phase_kwargs={'size':71}):
+def place_points_in_overlaps(nodes, size_threshold=0.0007,
+                             iterative_phase_kwargs={'size':71},
+                             distribute_points_kwargs={}):
     """
     Place points in all of the overlap geometries by back-projecing using
     sensor models.
@@ -48,8 +49,11 @@ def place_points_in_overlaps(cg, size_threshold=0.0007,
 
     Parameters
     ----------
-    cg : CandiateGraph object
-         that is used to access sensor information
+    nodes : dict-link
+            A dict like object with a shared key with the intersection
+            field of the database Overlay table and a cg node object
+            as the value. This could be a NetworkCandidateGraph or some
+            other dict-like object.
 
     size_threshold : float
                      overlaps with area <= this threshold are ignored
@@ -57,31 +61,17 @@ def place_points_in_overlaps(cg, size_threshold=0.0007,
     iterative_phase_kwargs : dict
         Dictionary of keyword arguments for the iterative phase matcher function
     """
-    if not Session:
-        warnings.warn('This function requires a database connection configured via an autocnet config file.')
-        return
-
     points = []
-    session = Session()
-    if 'dem' in config['spatial']:
-        dem = config['spatial']['dem']
-        gd = GeoDataset(dem)
-    else:
-        gd = None
-
-    # TODO: This should be a passable query where we can subset.
-    for o in session.query(Overlay).\
-             filter(sqlalchemy.func.ST_Area(Overlay.geom) >= size_threshold).\
-             filter(sqlalchemy.func.array_length(Overlay.intersections, 1) > 1):
+    for o in Overlay.overlapping_larger_than(size_threshold):
         overlaps = o.intersections
         if overlaps == None:
             continue
-        nodes = [cg.node[id]['data'] for id in overlaps]
-        points.extend(place_points_in_overlap(nodes, o.geom, dem=gd,
-                                              iterative_phase_kwargs=iterative_phase_kwargs))
-
-    session.add_all(points)
-    session.commit()
+        nodes = [nodes[id] for id in overlaps]
+        points.extend(place_points_in_overlap(nodes, o.geom, dem=dem,
+                                              iterative_phase_kwargs=iterative_phase_kwargs,
+                                              distribute_points_kwargs=distribute_points_kwargs))
+    
+    Points.bulkadd(points)
 
 def cluster_place_points_in_overlaps(size_threshold=0.0007,
                                      iterative_phase_kwargs={'size':71},
@@ -108,16 +98,8 @@ def cluster_place_points_in_overlaps(size_threshold=0.0007,
                options: {"csm", "isis"}
                Pick what kind of camera model implementation to use
     """
-    if not Session:
-        warnings.warn('This function requires a database connection configured via an autocnet config file.')
-        return
-
     # Get all of the overlaps over the size threshold
-    session = Session()
-    overlaps = session.query(Overlay.id, Overlay.geom, Overlay.intersections).\
-                       filter(sqlalchemy.func.ST_Area(Overlay.geom) >= size_threshold).\
-                       filter(sqlalchemy.func.array_length(Overlay.intersections, 1) > 1)
-    session.close()
+    overlaps = Overlay.overlapping_larger_than(size_threshold)
 
     # Setup the redis queue
     rqueue = StrictRedis(host=config['redis']['host'],
@@ -143,8 +125,9 @@ def cluster_place_points_in_overlaps(size_threshold=0.0007,
     submitter.submit(array='1-{}'.format(job_counter))
     return job_counter
 
-def place_points_in_overlap(nodes, geom, dem=None, cam_type="csm",
-                            iterative_phase_kwargs={'size':71}):
+def place_points_in_overlap(nodes, geom, dem=dem, cam_type="csm",
+                            iterative_phase_kwargs={'size':71},
+                            distribute_points_kwargs={}):
     """
     Place points into an overlap geometry by back-projecing using sensor models.
 
@@ -183,7 +166,7 @@ def place_points_in_overlap(nodes, geom, dem=None, cam_type="csm",
     ecef = pyproj.Proj(proj='geocent', a=semi_major, b=semi_minor)
     lla = pyproj.Proj(proj='latlon', a=semi_major, b=semi_minor)
 
-    valid = compgeom.distribute_points_in_geom(geom)
+    valid = compgeom.distribute_points_in_geom(geom, **distribute_points_kwargs)
     if not valid:
         warnings.warn('Failed to distribute points in overlap')
         return []

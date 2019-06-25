@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from shapely.geometry import Polygon
-from autocnet.spatial.overlap import place_points_in_overlap
+from autocnet.spatial.overlap import place_points_in_overlap, place_points_in_overlaps
 import csmapi
 
 @patch('autocnet.spatial.overlap.iterative_phase', return_value=(0, 1, 2))
@@ -58,3 +58,26 @@ def test_place_points_in_overlap(point_distributer, phase_matcher):
                                   first_node.geodata, third_node.geodata, size=71)
     phase_matcher.assert_any_call(0.0, 1.0, 0.0, 0.0,
                                   first_node.geodata, fourth_node.geodata, size=71)
+
+class MockOverlap():
+    intersections = [0,1]
+    geom = Polygon([(0,0),(0,5),(5,5),(5,0),(0,0)])
+
+
+
+@patch('autocnet.io.db.model.Overlay.overlapping_larger_than', return_value=[MockOverlap()]*3)
+@patch('autocnet.dem', return_value=None)
+@patch('autocnet.io.db.model.Points.bulkadd')
+@pytest.mark.parametrize("iterativekwargs, distributekwargs",[
+    ({'iterative_phase_kwargs':{'size':15}},
+     {'distribute_points_kwargs':{'ewpts_func':lambda:True}})
+])
+def test_place_points_in_overlaps(overlapper, dem, adder,iterativekwargs, distributekwargs):
+    nodes = [{'id':0}, {'id':1}]
+    with patch('autocnet.spatial.overlap.place_points_in_overlap', return_value=[1,2,3]) as ppio:
+        place_points_in_overlaps(nodes, iterative_phase_kwargs=iterativekwargs,distribute_points_kwargs=distributekwargs)
+        ppio.assert_called_with(nodes,
+                                Polygon([(0,0),(0,5),(5,5),(5,0),(0,0)]),
+                                dem=None,
+                                iterative_phase_kwargs=iterativekwargs,
+                                distribute_points_kwargs=distributekwargs)

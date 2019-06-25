@@ -8,6 +8,8 @@ from sqlalchemy.event import listen
 
 from pkg_resources import get_distribution, DistributionNotFound
 
+from plio.io.io_gdal import GeoDataset
+
 try:
     _dist = get_distribution('autocnet')
     # Normalize case for Windows systems
@@ -29,6 +31,16 @@ except:
     warnings.warn('No autocnet_config environment variable set. Defaulting to an en empty configuration.')
     config = {}
 
+if 'dem' in config['spatial']:
+    dem = config['spatial']['dem']
+    try:
+        dem = GeoDataset(dem)
+    except:
+        warnings.warn(f'Unable to load the dem: {dem}')
+        dem = None
+else:
+    dem = None
+
 try:
     db_uri = '{}://{}:{}@{}:{}/{}'.format(config['database']['type'],
                                             config['database']['username'],
@@ -42,8 +54,13 @@ try:
                     isolation_level="AUTOCOMMIT")                   
     Session = orm.session.sessionmaker(bind=engine)
 except: 
-    Session = None
-    engine = None
+    def sessionwarn():
+        raise RuntimeError('This call requires a database connection.')
+    
+    Session = sessionwarn
+    engine = sessionwarn
+
+
 
 import autocnet.examples
 import autocnet.camera

@@ -55,7 +55,7 @@ def convex_hull(points):
     """
 
     if isinstance(points, pd.DataFrame) :
-        points = pd.DataFrame.as_matrix(points)
+        points = pd.DataFrame(points).values
 
     hull = ConvexHull(points)
     return hull
