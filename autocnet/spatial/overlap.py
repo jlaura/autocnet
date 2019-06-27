@@ -66,8 +66,8 @@ def place_points_in_overlaps(nodes, size_threshold=0.0007,
         overlaps = o.intersections
         if overlaps == None:
             continue
-        nodes = [nodes[id] for id in overlaps]
-        points.extend(place_points_in_overlap(nodes, o.geom, dem=dem,
+        overlapnodes = [nodes[id] for id in overlaps]
+        points.extend(place_points_in_overlap(overlapnodes, o.geom, dem=dem,
                                               iterative_phase_kwargs=iterative_phase_kwargs,
                                               distribute_points_kwargs=distribute_points_kwargs))
     

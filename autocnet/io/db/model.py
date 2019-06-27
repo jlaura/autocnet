@@ -257,7 +257,8 @@ class Overlay(BaseMixin, Base):
     def geom(self, geom):
         self._geom = from_shape(geom, srid=latitudinal_srid)
 
-    def overlapping_larger_than(self, size_threshold):
+    @classmethod
+    def overlapping_larger_than(cls, size_threshold):
         """
         Query the Overlay table for an iterable of responses where the objects
         in the iterable have an area greater than a given size.
@@ -268,9 +269,9 @@ class Overlay(BaseMixin, Base):
                         area >= this arg are returned
         """
         session = Session()
-        res = session.query(self).\
-                filter(sqlalchemy.func.ST_Area(self.geom) >= size_threshold).\
-                filter(sqlalchemy.func.array_length(self.intersections, 1) > 1)
+        res = session.query(cls).\
+                filter(sqlalchemy.func.ST_Area(cls.geom) >= size_threshold).\
+                filter(sqlalchemy.func.array_length(cls.intersections, 1) > 1)
         session.close()
         return res
 
