@@ -118,8 +118,7 @@ def test_points_exists(tables):
     {'pointtype':2, 'identifier':'123abc'},
     {'pointtype':3, 'apriori':Point(0,0,0)},
     {'pointtype':3, 'adjusted':Point(0,0,0)},
-    {'pointtype':2, 'adjusted':Point(1,1,1), 'active':True},
-    {'pointtype':2, 'rms':0.001}
+    {'pointtype':2, 'adjusted':Point(1,1,1), 'active':True}
 ])
 def test_create_point(session, data):
     p = model.Points.create(session, **data)
