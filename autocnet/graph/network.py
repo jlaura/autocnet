@@ -37,7 +37,7 @@ from autocnet.graph.edge import Edge, NetworkEdge
 from autocnet.graph.node import Node, NetworkNode
 from autocnet.io import network as io_network
 from autocnet.io.db.model import (Images, Keypoints, Matches, Cameras, Points,
-                                  Base, Overlay, Edges, Costs, Measures)
+                                  Base, Overlay, Edges, Costs, Measures, JsonEncoder)
 from autocnet.io.db.connection import new_connection, Parent
 from autocnet.vis.graph_view import plot_graph, cluster_plot
 from autocnet.control import control
@@ -1350,7 +1350,7 @@ class NetworkCandidateGraph(CandidateGraph):
         Parameters
         ----------
 
-        function : obj
+        function : string
                    The function to apply
 
         on : str
@@ -1380,6 +1380,9 @@ class NetworkCandidateGraph(CandidateGraph):
 
         res = []
 
+        if not isinstance(function, (str, bytes)):
+            raise TypeError('Function argument must be a string or bytes object.')
+
         for job_counter, elem in enumerate(onobj.data('data')):
             # Determine if we are working with an edge or a node
             if len(elem) > 2:
@@ -1399,7 +1402,7 @@ class NetworkCandidateGraph(CandidateGraph):
                     'image_path':image_path,
                     'param_step':1}
 
-            self.redis_queue.rpush(self.processing_queue, json.dumps(msg))
+            self.redis_queue.rpush(self.processing_queue, json.dumps(msg, cls=JsonEncoder))
 
         # SLURM is 1 based, while enumerate is 0 based
         job_counter += 1

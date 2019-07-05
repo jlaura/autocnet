@@ -9,7 +9,7 @@ from plio.io.io_gdal import GeoDataset
 
 from autocnet import config, dem
 from autocnet.cg import cg as compgeom
-from autocnet.io.db.model import Images, Measures, Overlay, Points
+from autocnet.io.db.model import Images, Measures, Overlay, Points, JsonEncoder
 from autocnet.spatial import isis
 
 from plurmy import Slurm
@@ -100,7 +100,7 @@ def cluster_place_points_in_overlaps(size_threshold=0.0007,
                'distribute_points_kwargs' : distribute_points_kwargs,
                'walltime' : walltime,
                'cam_type': cam_type}
-        rqueue.rpush(queuename, json.dumps(msg))
+        rqueue.rpush(queuename, json.dumps(msg, cls=JsonEncoder))
     job_counter = len([*overlaps]) + 1
 
     # Submit the jobs

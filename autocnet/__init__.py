@@ -23,25 +23,18 @@ except DistributionNotFound:
 else:
     __version__ = _dist.version
 
-#Load the config file and setup a global DB session factory
-try:
-    with open(os.environ['autocnet_config'], 'r') as f:
-        config = yaml.safe_load(f)
-except:
-    warnings.warn('No autocnet_config environment variable set. Defaulting to an empty configuration.')
-    config = {}
+from config_parser import parse_config
 
-if 'dem' in config['spatial']:
+config = parse_config()
+
+if config:
     dem = config['spatial']['dem']
-    try:
-        dem = GeoDataset(dem)
-    except:
-        warnings.warn(f'Unable to load the dem: {dem}')
-        dem = None
-else:
-    dem = None
+    if dem:
+        try:
+            dem = GeoDataset(dem)
+        except:
+            dem = None
 
-try:
     db_uri = '{}://{}:{}@{}:{}/{}'.format(config['database']['type'],
                                             config['database']['username'],
                                             config['database']['password'],
@@ -53,14 +46,15 @@ try:
                     connect_args={"application_name":"AutoCNet_{}".format(hostname)},
                     isolation_level="AUTOCOMMIT")                   
     Session = orm.session.sessionmaker(bind=engine)
-except: 
+else:
+    dem = None
     def sessionwarn():
         raise RuntimeError('This call requires a database connection.')
-    
     Session = sessionwarn
     engine = sessionwarn
 
-
+# Patch the candidate graph into the root namespace
+from autocnet.graph.network import CandidateGraph, NetworkCandidateGraph
 
 import autocnet.examples
 import autocnet.camera
@@ -71,9 +65,6 @@ import autocnet.matcher
 import autocnet.transformation
 import autocnet.utils
 import autocnet.spatial
-
-# Patch the candidate graph into the root namespace
-from autocnet.graph.network import CandidateGraph
 
 def get_data(filename):
     packagdir = autocnet.__path__[0]
