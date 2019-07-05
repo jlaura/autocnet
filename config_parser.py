@@ -17,7 +17,10 @@ def parse_config(name='autocnet_config'):
     spatial = config.get('spatial', None)
     if spatial == None:
         raise KeyError('Config is missing the root "spatial" key.')
-
+    for k in ['latitudinal_srid']:
+        if k not in spatial.keys():
+            raise KeyError(f'Missing key: {k} in the spatial section of the config.')
+            
     database = config.get('database', None)
     if database == None:
         raise KeyError('Config is missing the root "database" key.')

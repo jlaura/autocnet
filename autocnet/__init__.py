@@ -23,17 +23,19 @@ except DistributionNotFound:
 else:
     __version__ = _dist.version
 
+# Defaults
+dem = None
+
 from config_parser import parse_config
 
 config = parse_config()
 
 if config:
     dem = config['spatial']['dem']
-    if dem:
-        try:
-            dem = GeoDataset(dem)
-        except:
-            dem = None
+    try:
+        dem = GeoDataset(dem)
+    except:
+        dem = None
 
     db_uri = '{}://{}:{}@{}:{}/{}'.format(config['database']['type'],
                                             config['database']['username'],
@@ -47,7 +49,6 @@ if config:
                     isolation_level="AUTOCOMMIT")                   
     Session = orm.session.sessionmaker(bind=engine)
 else:
-    dem = None
     def sessionwarn():
         raise RuntimeError('This call requires a database connection.')
     Session = sessionwarn
