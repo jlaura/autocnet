@@ -67,7 +67,9 @@ def place_points_in_overlaps(nodes, size_threshold=0.0007,
 
 def cluster_place_points_in_overlaps(size_threshold=0.0007,
                                      distribute_points_kwargs={},
-                                     walltime='00:10:00', cam_type="csm"):
+                                     walltime='00:10:00', 
+                                     chunksize=1000,
+                                     cam_type="csm"):
     """
     Place points in all of the overlap geometries by back-projecing using
     sensor models. This method uses the cluster to process all of the overlaps
@@ -108,8 +110,9 @@ def cluster_place_points_in_overlaps(size_threshold=0.0007,
                  time=walltime,
                  partition=config['cluster']['queue'],
                  output=config['cluster']['cluster_log_dir']+'/autocnet.place_points-%j')
-    submitter.submit(array='1-{}'.format(i+1))
-    return i + 1
+    job_counter = i+1
+    submitter.submit(array='1-{}'.format(job_counter), chunksize=chunksize)
+    return job_counter
 
 def place_points_in_overlap(nodes, geom, cam_type="csm",
                             distribute_points_kwargs={}):
