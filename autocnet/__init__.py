@@ -35,6 +35,7 @@ if config:
     try:
         dem = GeoDataset(dem)
     except:
+        warnings.warn(f'Unable to load the desired DEM: {dem}.')
         dem = None
 
     db_uri = '{}://{}:{}@{}:{}/{}'.format(config['database']['type'],
