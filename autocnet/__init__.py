@@ -51,7 +51,7 @@ if config:
     Session = orm.session.sessionmaker(bind=engine)
 else:
     def sessionwarn():
-        raise RuntimeError('This call requires a database connection.')
+        raise RuntimeError('Attempting to use a database session without a config file specified.')
     Session = sessionwarn
     engine = sessionwarn
 
