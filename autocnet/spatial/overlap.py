@@ -108,7 +108,7 @@ def cluster_place_points_in_overlaps(size_threshold=0.0007,
                  time=walltime,
                  partition=config['cluster']['queue'],
                  output=config['cluster']['cluster_log_dir']+'/autocnet.place_points-%j')
-    submitter.submit(array='1-{}'.format(job_counter))
+    submitter.submit(array='1-{}'.format(i+1))
     return i + 1
 
 def place_points_in_overlap(nodes, geom, cam_type="csm",
