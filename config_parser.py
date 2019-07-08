@@ -7,7 +7,7 @@ def parse_config(name='autocnet_config'):
     
     filepath = os.environ[name]
     if not os.path.exists(filepath):
-        return {}
+        raise OSError(f'Specified config file does not exist. Currently set to {filepath}.')
 
     # Not wrapping in a try/except so that we get the 
     # yaml library to raise any issues on parsing
@@ -17,7 +17,7 @@ def parse_config(name='autocnet_config'):
     spatial = config.get('spatial', None)
     if spatial == None:
         raise KeyError('Config is missing the root "spatial" key.')
-    for k in ['latitudinal_srid']:
+    for k in ['latitudinal_srid', 'dem']:
         if k not in spatial.keys():
             raise KeyError(f'Missing key: {k} in the spatial section of the config.')
             

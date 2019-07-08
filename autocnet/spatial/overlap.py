@@ -102,19 +102,6 @@ def cluster_place_points_in_overlaps(size_threshold=0.0007,
                'walltime' : walltime,
                'cam_type': cam_type}
         rqueue.rpush(queuename, json.dumps(msg, cls=JsonEncoder))
-        if (i > 0) and i % 10000 == 0:
-            job_counter = i - past + 1
-            past = i
-            # Submit the jobs
-            submitter = Slurm('acn_overlaps',
-                        mem_per_cpu=config['cluster']['processing_memory'],
-                        time=walltime,
-                        partition=config['cluster']['queue'],
-                        output=config['cluster']['cluster_log_dir']+'/autocnet.place_points-%j')
-            submitter.submit(array='1-{}'.format(job_counter))
-
-    job_counter = i - past + 1
-
     # Submit the jobs
     submitter = Slurm('acn_overlaps',
                  mem_per_cpu=config['cluster']['processing_memory'],
