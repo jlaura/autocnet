@@ -69,7 +69,8 @@ def cluster_place_points_in_overlaps(size_threshold=0.0007,
                                      distribute_points_kwargs={},
                                      walltime='00:10:00', 
                                      chunksize=1000,
-                                     cam_type="csm"):
+                                     cam_type="csm",
+                                     query_string='SELECT overlay.id FROM overlay LEFT JOIN points ON ST_INTERSECTS(overlay.geom, points.geom) WHERE points.id IS NULL;'):
     """
     Place points in all of the overlap geometries by back-projecing using
     sensor models. This method uses the cluster to process all of the overlaps
@@ -86,6 +87,8 @@ def cluster_place_points_in_overlaps(size_threshold=0.0007,
     cam_type : str
                options: {"csm", "isis"}
                Pick what kind of camera model implementation to use
+
+    query
     """
     # Setup the redis queue
     rqueue = StrictRedis(host=config['redis']['host'],
@@ -96,10 +99,10 @@ def cluster_place_points_in_overlaps(size_threshold=0.0007,
     queuename = config['redis']['processing_queue']
     past = 0
     session = Session()
-    ids = session.query(Overlay.id).all()
+    ids = [i[0] for i in session.execute(query_string)]
     session.close()
     for i, id in enumerate(ids):
-        msg = {'id' : id[0],
+        msg = {'id' : id,
                'distribute_points_kwargs' : distribute_points_kwargs,
                'walltime' : walltime,
                'cam_type': cam_type}

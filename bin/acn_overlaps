@@ -24,20 +24,19 @@ except:
 
 def main(msg, config):
     session = Session()
-    id = msg['id']
-    res = session.query(Overlay).filter(Overlay.id == msg['id'])
-    if res is None:
+    oid = msg['id']
+    overlap = session.query(Overlay).filter(Overlay.id == oid).one()
+    if overlap is None:
         print('Could not find overlap with ID', id)
         sys.exit(1)
-    overlap = res.first()
     geom = overlap.geom
     nodes = []
     for id in overlap.intersections:
-        res = session.query(Images).filter(Images.id == id).first()
+        res = session.query(Images).filter(Images.id == id).one()
         nodes.append(NetworkNode(node_id=id, image_path=res.path))
     session.close()
     
-    print('Placing points in overlap', id)
+    print('Placing points in overlap', oid)
     points = place_points_in_overlap(nodes, geom, msg["cam_type"],
                                      msg['distribute_points_kwargs'])
     
