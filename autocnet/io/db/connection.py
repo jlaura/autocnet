@@ -36,4 +36,4 @@ def new_connection(config):
     engine = sqlalchemy.create_engine(db_uri,
                                       poolclass=sqlalchemy.pool.NullPool)
     Session = sqlalchemy.orm.sessionmaker(bind=engine, autocommit=True)
-    return Session(), engine
+    return Session, engine

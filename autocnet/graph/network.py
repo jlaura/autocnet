@@ -1581,6 +1581,29 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         return obj
 
     @classmethod
+    def from_remote_database(cls, config, query_string='SELECT * FROM public.images'):
+        """
+        This is a constructor that takes an existing database containing images and sensors, 
+        copies the selected rows into the project specified in the autocnet_config variable, 
+        and instantiates a new NetworkCandidateGraph object. This method is
+        similar to the `from_database` method. The main difference is that this
+        method assumes that the image and sensor rows are prepopulated in an external db
+        and simply copies those entires into the currently speficied project.
+        """
+        sourceSession, _ = new_connection(config)
+        sourcesession = sourceSession()
+        sourceimages = sourcesession.execute(query_string).all()
+        #sourceimageids = [i.id for i in sourceimages]
+        #sourcecameras = sourcesession.query(Cameras).filter(Cameras.id.in_(sourceimageids)).all()
+        
+        session = Session()
+        session.add_all(sourceimages)
+        session.commit()
+        session.close()
+        
+        sourcesession.close()
+
+    @classmethod
     def from_database(cls, query_string='SELECT * FROM public.images'):
         """
         This is a constructor that takes the results from an arbitrary query string,
