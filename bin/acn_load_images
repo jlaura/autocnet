@@ -62,17 +62,14 @@ def create_camera(config, geodata, imagepath):
     # Create the camera entry
     label = pvl.dumps(geodata.metadata).decode()
     url = config['pfeffernusse']['url']
-    response = requests_retry_session.post(url, json={'label':label})
+    response = requests_retry_session().post(url, json={'label':label})
     response = response.json()
     model_name = response.get('name_model', None)
     if model_name is None:
         return (None, None)
     isdpath = os.path.splitext(imagepath)[0] + '.json'
-    try:
-        with open(isdpath, 'w') as f:
-            json.dump(response, f)
-    except Exception as e:
-        warnings.warn('Failed to write JSON ISD for image {}.\n{}'.format(imagepath, e))
+    with open(isdpath, 'w') as f:
+        json.dump(response, f)
     isd = csmapi.Isd(imagepath)
     plugin = csmapi.Plugin.findPlugin('UsgsAstroPluginCSM')
     camera = plugin.constructModelFromISD(isd, model_name)

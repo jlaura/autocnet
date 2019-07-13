@@ -1592,16 +1592,25 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         """
         sourceSession, _ = new_connection(config)
         sourcesession = sourceSession()
-        sourceimages = sourcesession.execute(query_string).all()
-        #sourceimageids = [i.id for i in sourceimages]
-        #sourcecameras = sourcesession.query(Cameras).filter(Cameras.id.in_(sourceimageids)).all()
         
-        session = Session()
-        session.add_all(sourceimages)
-        session.commit()
-        session.close()
+        sourceimages = sourcesession.execute(query_string).fetchall()
         
+        destinationsession = Session()
+        destinationsession.execute(Images.__table__.insert(), sourceimages)
+
+        # Get the camera objects to manually join. Keeps the caller from
+        # having to remember to bring cameras as well.
+        ids = [i[0] for i in sourceimages]
+        cameras = sourcesession.query(Cameras).filter(Cameras.image_id.in_(ids)).all()
+        for c in cameras:
+            destinationsession.merge(c)
+
+        destinationsession.commit()
+        destinationsession.close()
         sourcesession.close()
+        obj = cls.from_database()
+        obj._execute_sql(compute_overlaps_sql)
+        return obj
 
     @classmethod
     def from_database(cls, query_string='SELECT * FROM public.images'):
