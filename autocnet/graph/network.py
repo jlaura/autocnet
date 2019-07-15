@@ -3,6 +3,7 @@ import itertools
 import json
 import math
 import os
+import queue
 from shutil import copyfile
 from time import gmtime, strftime, time
 import warnings
@@ -43,6 +44,7 @@ from autocnet.io.db.connection import new_connection, Parent
 from autocnet.vis.graph_view import plot_graph, cluster_plot
 from autocnet.control import control
 from autocnet.spatial.overlap import compute_overlaps_sql
+from autocnet.utils.filecopy import FileCopy
 
 #np.warnings.filterwarnings('ignore')
 
@@ -1606,8 +1608,14 @@ WHERE points.active = True AND measures.active=TRUE AND measures.jigreject=FALSE
         session.commit()
         session.close()
         
-        # Copy the files
-        [copyfile(old, new) for old, new in oldnew]
+        # Copy the files asynchronously
+        q = queue.Queue()
+        for mv in oldnew:
+            q.put_nowait(mv)
+        nthreads = 10
+        for i in range(nthreads):
+            q.put_nowait(None)
+            FileCopy(q).start()
 
     @classmethod
     def from_remote_database(cls, source_db_config, path,  query_string='SELECT * FROM public.images LIMIT 10'):
