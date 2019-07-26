@@ -224,6 +224,34 @@ class Images(BaseMixin, Base):
         else:
             self._footprint_latlon = from_shape(geom, srid=latitudinal_srid)
 
+    @classmethod
+    def union(cls, subquery=None):
+        """
+        Return a shapely geometry that is the union of all of the geometries in
+        the input data set.
+
+        Parameters
+        ----------
+        subquery : obj
+                   A valid subquery to be passed to the sqlalchemy filter. For
+                   example, 'cls.id < 5' or 'cls.footprint_latlon.intersects(p.wkt)',
+                   where p is a shapely geometry. Note in the second example, it is necessary
+                   to pass in the wkt representation and not the shapely geom.
+
+        Returns
+        -------
+        geom : shapely.geometry
+               A shapely geometry object that is the union of the selected images
+        """
+        session = Session()
+        if subquery:
+            resp = session.query(cls.footprint_latlon.ST_Union()).filter(subquery).one()
+        else:
+            resp = session.query(cls.footprint_latlon.ST_Union()).one()
+        geom = to_shape(resp[0])
+        session.close()
+        return geom
+
 class Overlay(BaseMixin, Base):
     __tablename__ = 'overlay'
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -286,8 +314,7 @@ class Points(BaseMixin, Base):
     identifier = Column(String, unique=True)
 
     # This is outside the specification but nice to have for vis
-    _geom = Column("geom", Geometry('POINT', srid=srid, dimension=2, spatial_index=True))
-     _geom = Column("geom", Geometry('POINT', srid=latitudinal_srid, dimension=2, spatial_index=True))
+    _geom = Column("geom", Geometry('POINT', srid=latitudinal_srid, dimension=2, spatial_index=True))
     active = Column(Boolean, default=True)
     _apriori = Column("apriori", Geometry('POINTZ', srid=rectangular_srid, dimension=3, spatial_index=False))
     _adjusted = Column("adjusted", Geometry('POINTZ', srid=rectangular_srid, dimension=3, spatial_index=False))
@@ -425,6 +452,28 @@ class Measures(BaseMixin, Base):
         if isinstance(v, int):
             v = MeasureType(v)
         self._measuretype = v
+
+
+class ThemisImages(BaseMixin, Base):
+    __tablename__ = 'themisdayir'
+    id = Column(Integer,primary_key=True, autoincrement=True)
+    name = Column("name", String)
+    path = Column("path", String)
+    _geom = Column("geom", Geometry('POLYGON', srid=latitudinal_srid, dimension=2, spatial_index=True))
+    serial = Column("serial", String, unique=True, nullable=False)
+
+    @hybrid_property
+    def geom(self):
+        try:
+            return to_shape(self._geom)
+        except:
+            return self._geom
+
+    @geom.setter
+    def geom(self, geom):
+        raise TypeError("The geom column for Points cannot be set." \
+                        " Set the adjusted column to update the geom.")
+
 
 if isinstance(Session, sqlalchemy.orm.sessionmaker):
     from autocnet.io.db.triggers import valid_point_function, valid_point_trigger, valid_geom_function, valid_geom_trigger
