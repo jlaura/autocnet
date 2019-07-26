@@ -1,116 +1,111 @@
-import ctypes
-import enum
-import glob
-import json
-import os
-import os.path
-import socket
-from ctypes.util import find_library
-
 import numpy as np
 import pandas as pd
-import scipy
-from matplotlib import pyplot as plt
-from scipy.misc import imresize
-from sqlalchemy import (Boolean, Column, Float, ForeignKey, Integer,
-                        LargeBinary, String, UniqueConstraint, create_engine,
-                        event, orm, pool)
-from sqlalchemy.ext.declarative import declarative_base
-
 import geopandas as gpd
-import plio
-import pvl
-import pyproj
-import pysis
 
-from gdal import ogr
+import scipy
+from scipy.misc import imresize
 
-import geoalchemy2
-from geoalchemy2 import Geometry, WKTElement
-from geoalchemy2.shape import to_shape
-from geoalchemy2 import functions
-
-from knoten import csm
-
-from plio.io.io_controlnetwork import from_isis, to_isis
 from plio.io.io_gdal import GeoDataset
 
-from pysis.exceptions import ProcessError
-from pysis.isis import campt
-
+from geoalchemy2 import functions, shape
 from shapely import wkt
-from shapely.geometry.multipolygon import MultiPolygon
 from shapely.geometry import Point
 
 from autocnet import config, engine, Session
-from autocnet.io.db.model import Images, Points, Measures
+from autocnet.io.db.model import Images, Points, Measures, ThemisImages
 from autocnet.graph.network import NetworkCandidateGraph
 from autocnet.matcher.subpixel import iterative_phase
 from autocnet.cg.cg import distribute_points_in_geom
 from autocnet.io.db.connection import new_connection
+from autocnet.io.db.model import Images
 from autocnet.spatial import isis
 
 import warnings
 
-ctypes.CDLL(find_library('usgscsm'))
-
-def generate_ground_points(ground_database, nspts_func=lambda x: int(round(x,1)*1), ewpts_func=lambda x: int(round(x,1)*4)):
-    ground_session, ground_engine = new_connection(ground_database)
-
-    session = Session()
-    ground_poly = wkt.loads(session.query(functions.ST_AsText(functions.ST_Union(Images.footprint_latlon))).one()[0])
-    session.close()
-
-    image_fp_bounds = list(ground_poly.bounds)
-
-    # just hard code queries to the mars database as it exists for now
-    ground_image_query = f'select * from themisdayir where geom && ST_MakeEnvelope({image_fp_bounds[0]}, {image_fp_bounds[1]}, {image_fp_bounds[2]}, {image_fp_bounds[3]}, {config["spatial"]["latitudinal_srid"]})'
-    themis_images = gpd.GeoDataFrame.from_postgis(ground_image_query,
-                                                  ground_engine, geom_col="geom")
-
-    coords = distribute_points_in_geom(ground_poly, nspts_func=nspts_func, ewpts_func=ewpts_func)
-    coords = np.asarray(coords)
-
-    sql = """
-    SELECT * FROM themisdayir as i WHERE ST_Contains(i.geom, ST_setsrid(ST_Point({}, {}), 949900))
+def generate_ground_points(ground_database, image_subquery=None, nspts_func=lambda x: int(round(x,1)*1), ewpts_func=lambda x: int(round(x,1)*4)):
     """
+    Generate some number of candidate ground points inside of an already controlled data set using
+    a set of images in the current working data set. For example, if the working data set is CTX, 
+    this method can be used to place points into THEMIS (or HRSC) images. The algorithm operates
+    by selecting some set of images from the current active database, performing a spatial union
+    on the footprints of those images, placing points into the resultant unioned footprint, selecting
+    all intersecting images from the existing controlled data set, and finally identifying those
+    points which intersect a given already controlled image.
 
-    records = []
-    coord_list = []
-    coord_id = []
+    TODO: Break this func apart for better testability.
+    
+    Parameters
+    ----------
+    ground_database : dict
+                      in the form {'username':'jay',
+                                   'password':'abcde',
+                                   'host':'autocnet.wr.usgs.gov', 
+                                   'pgbouncer_port':'6543', 
+                                   'name':'themis'}
+    
+    image_subquery : obj
+                     A valid sqlalchemy or geomalchemy filter object. For example:
+                     `Images.id < 5` or `Images.footprint_latlon.intersects(p.wkt)`,
+                     where `p` is a shapely geometry
+                     
+    nspts_func : obj
+                 A function taking one argument controlling the number of north-south
+                 points to be placed into a footprint
+                 
+    ewpts_func : obj
+                 A function taking one argument controlling the number of east-west
+                 points to be placed into a footprint
+                 
+    Returns
+    -------
+    ground_cnet : GeoDataframe
+                  A geopandas GeoDataframe containing one row for every point-image
+                  combination including 'line', 'sample', 'resolution', and 'path'
+                  columns.
+                 
+    """
+    # Get the union of some number of images in the database being worked on
+    images_poly = Images.union(subquery=image_subquery)
+    
+    # Distribute points within the unioned geometry as candidate ground points.
+    coords = distribute_points_in_geom(images_poly, nspts_func=nspts_func, ewpts_func=ewpts_func)
+    coords = np.asarray(coords)
+    coords = gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=coords[:,0], y=coords[:,1]))
 
-    # throw out points not intersecting the ground reference images
-    for i, coord in enumerate(coords):
-        formated_sql = sql.format(coord[0], coord[1])
-        res = ground_session.execute(formated_sql)
-        for record in res:
-            records.append(record)
-            coord_list.append(Point(*coord))
-
+    # Get the ground dataset that the working images are to be tied to
+    ground_Session, _ = new_connection(ground_database)
+    ground_session = ground_Session()
+    # Get the query object, pass to pandas for the SQL read, remap wkb to shapely geoms, and get a geodataframe
+    ground_query = ground_session.query(ThemisImages).filter(ThemisImages.geom.intersects(images_poly.wkt))
+    df = pd.read_sql(ground_query.statement, ground_query.session.bind)
+    df['geom'] = df['geom'].apply(lambda g: shape.to_shape(g))
+    themis_images = gpd.GeoDataFrame(df, geometry='geom')
     ground_session.close()
 
-    # start building the cnet
-    ground_cnet = pd.DataFrame(data = records, columns = ['pointid', 'path', 'footprint', 'serial', 'name'])
-    ground_cnet["point"] = coord_list
-    ground_cnet['line'] = None
-    ground_cnet['sample'] = None
-    ground_cnet['resolution'] = None
+    # Add mock keys to support a cartesian product merge of the points and the images, mask all the
+    # points that do not fall in a given image, and prepare to group and intersect
+    coords['key'] = 0
+    coords['pointid'] = np.arange(len(coords))
+    themis_images['key'] = 0
+    merged = themis_images.merge(coords, how='outer')
+    mask = merged.apply(lambda r:r.geom.contains(r.geometry), axis=1)
+    ground_cnet = merged[mask]
 
-    # generate lines and samples from ground points
-    groups = ground_cnet.groupby('path')
-
+    
     # group by images so campt can do multiple at a time
-    for group_id, group in groups:
-        row = group.iloc[0]
-        lons = [p.x for p in group['point']]
-        lats = [p.y for p in group['point']]
+    for _, group in ground_cnet.groupby('path'):
+        
+        row = group.iloc[0] # Get the image path for all the points
+        lons = [p.x for p in group['geometry']]
+        lats = [p.y for p in group['geometry']]
 
+        # Project to ground
         point_list = isis.point_info(row['path'], lons, lats, 'ground')
         lines = []
         samples = []
         resolutions = []
-        indices = []
-        for i, res in enumerate(point_list):
+        
+        for _, res in enumerate(point_list):
             if res[1].get('Error') is not None:
                 print('Bad intersection')
                 lines.append(None)
@@ -120,14 +115,11 @@ def generate_ground_points(ground_database, nspts_func=lambda x: int(round(x,1)*
                 lines.append(res[1].get('Line'))
                 samples.append(res[1].get('Sample'))
                 resolutions.append(res[1].get('LineResolution').value)
-        index = group.index.__array__()
-        ground_cnet.loc[index, 'line'] = lines
-        ground_cnet.loc[index, 'sample'] = samples
-        ground_cnet.loc[index, 'resolution'] = resolutions
-
-    ground_cnet = gpd.GeoDataFrame(ground_cnet, geometry='point')
+        # TODO: These lines throw a series set warning
+        ground_cnet.loc[group.index, 'line'] = lines
+        ground_cnet.loc[group.index, 'sample'] = samples
+        ground_cnet.loc[group.index, 'resolution'] = resolutions
     return ground_cnet
-
 
 def propagate_control_network(base_cnet):
     """
