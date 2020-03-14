@@ -203,8 +203,8 @@ def place_points_in_overlap(nodes, geom, cam_type="csm",
 
         # kps are in the image space with upper left origin, so convert to
         # center origin and then convert back into full image space
-        newsample = sample + (interesting.x - size)
-        newline = line + (interesting.y - size)
+        newsample = sample + (interesting.x - image.shape[1])
+        newline = line + (interesting.y - image.shape[0])
 
         # Get the updated lat/lon from the feature in the node
         if cam_type == "isis":
