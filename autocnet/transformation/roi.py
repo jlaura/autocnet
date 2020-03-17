@@ -136,12 +136,14 @@ class Roi():
     def clip(self):
         pixels = self.image_extent
         if isinstance(self.geodataset, np.ndarray):
-            self.array = self.geodataset[pixels[2]:pixels[3], 
-                                         pixels[0]:pixels[1]]
+            array = self.geodataset[pixels[2]:pixels[3]+1, 
+                                         pixels[0]:pixels[1]+1]
         else:
             # Have to reformat to [xstart, ystart, xnumberpixels, ynumberpixels]
             pixels = [pixels[0], pixels[2], pixels[1]-pixels[0], pixels[3]-pixels[2]]
-            self.array = self.geodataset.read_array(pixels=pixels)
+            array = self.geodataset.read_array(pixels=pixels)
+
+        return array
 
     def transform(self, x, y):
         """

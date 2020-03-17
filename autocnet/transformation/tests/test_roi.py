@@ -28,16 +28,16 @@ def test_extent_computation(x, y, size_arr, size_roi, expected):
     assert pixels == expected
 
 @pytest.mark.parametrize("x, y, size_arr, size_roi, expected",[
-    (50, 50, (100,100), (10,10), (4040, 5959)),
-    (10, 10, (100, 100), (20, 20), (0,2929)),
+    (50, 50, (100,100), (10,10), (4040, 6060)),
+    (10, 10, (100, 100), (20, 20), (0,3030)),
     (75, 75, (100,100), (30,30), (4545, 9999))
 ])
 def test_array_extent_computation(x, y, size_arr, size_roi, expected):
     gd = np.arange(size_arr[0]*size_arr[1]).reshape(size_arr)
     roi = Roi(gd, x, y, size_x=size_roi[0], size_y=size_roi[1])
-    roi.clip()
-    assert roi.array.min() == expected[0]
-    assert roi.array.max() == expected[1]
+    array = roi.clip()
+    assert array.min() == expected[0]
+    assert array.max() == expected[1]
 
 @pytest.mark.parametrize("x, y, size_arr, size_roi, expected",[
     (50, 50, (100,100), (10,10), (10, 10)),
@@ -53,7 +53,7 @@ def test_roi_origin(x, y, size_arr, size_roi, expected):
 @pytest.mark.parametrize("x, y, x1, y1, xs, ys, size_arr, size_roi, expected",[
     (50, 50, 50, 50, -5, -5, (100, 100), (10, 10), (45, 45)),
     (50, 50, 10, 10, -5, -5, (100, 100), (20, 20), (5,  5 )),
-
+    (50, 50, 10, 10,  5,  5, (100, 100), (20, 20), (15, 15 ))
 ])
 def test_subpixel_using_roi(x, y, x1, y1, xs, ys, size_arr, size_roi, expected):
     source = np.arange(size_arr[0]*size_arr[1]).reshape(size_arr)
