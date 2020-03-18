@@ -206,8 +206,9 @@ def place_points_in_overlap(nodes, geom, cam_type="csm",
         # kps are in the image space with upper left origin and the roi
         # could be the requested size or smaller if near an image boundary.
         # So use the roi upper left_x and top_y for the actual origin.
-        newsample = image_roi.left_x + interesting.x
-        newline = image_roi.top_y + interesting.y
+        left_x, _, top_y, _ = image_roi.image_extent
+        newsample = left_x + interesting.x
+        newline = top_y + interesting.y
 
         # Get the updated lat/lon from the feature in the node
         if cam_type == "isis":

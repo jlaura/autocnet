@@ -39,17 +39,6 @@ def test_array_extent_computation(x, y, size_arr, size_roi, expected):
     assert array.min() == expected[0]
     assert array.max() == expected[1]
 
-@pytest.mark.parametrize("x, y, size_arr, size_roi, expected",[
-    (50, 50, (100,100), (10,10), (10, 10)),
-    (10, 10, (100, 100), (20, 20), (15,15)),
-    (75, 75, (100,100), (30,30), (27.5, 27.5 ))
-])
-def test_roi_origin(x, y, size_arr, size_roi, expected):
-    gd = np.zeros(size_arr)
-    roi = Roi(gd, x, y, size_x=size_roi[0], size_y=size_roi[1])
-    pixels = roi.image_extent
-    assert roi.origin_roi == expected
-
 @pytest.mark.parametrize("x, y, x1, y1, xs, ys, size_arr, size_roi, expected",[
     (50, 50, 50, 50, -5, -5, (100, 100), (10, 10), (45, 45)),
     (50, 50, 10, 10, -5, -5, (100, 100), (20, 20), (5,  5 )),

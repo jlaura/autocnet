@@ -24,10 +24,6 @@ class Roi():
     size_y : int
              1/2 the total ROI height in pixels
 
-    origin_roi : tuple
-                 in the form (x,y). The origin coordinates
-                 of the ROI (center of the ROI)
-
     left_x : int
              The left pixel coordinate in image space
 
@@ -65,44 +61,6 @@ class Roi():
         self.ayr, self._y = modf(y)
 
     @property
-    def left_x(self):
-        return self._left_x
-
-    @left_x.setter
-    def left_x(self, x):
-        self._left_x = int(x)
-
-    @property
-    def right_x(self):
-        return self._right_x
-
-    @right_x.setter
-    def right_x(self, x):
-        self._right_x = int(x)
-
-    @property
-    def top_y(self):
-        return self._top_y
-    
-    @top_y.setter
-    def top_y(self, y):
-        self._top_y = int(y)
-
-    @property
-    def bottom_y(self):
-        return self._bottom_y
-
-    @bottom_y.setter
-    def bottom_y(self, y):
-        self._bottom_y = int(y)
-
-    @property
-    def origin_roi(self):
-        _ = self.image_extent
-        return ((self.right_x - self.left_x) / 2,
-                (self.bottom_y - self.top_y) / 2)
-
-    @property
     def image_extent(self):
         """
         In full image space, this method computes the valid
@@ -116,22 +74,21 @@ class Roi():
             raster_size = self.geodataset.shape[::-1]
 
         # what is the extent that can actually be extracted?
-        self.left_x = self._x - self.size_x
-        self.right_x = self._x + self.size_x
-        self.top_y = self._y - self.size_y
-        self.bottom_y = self.y + self.size_y
+        left_x = self._x - self.size_x
+        right_x = self._x + self.size_x
+        top_y = self._y - self.size_y
+        bottom_y = self.y + self.size_y
 
         if self._x - self.size_x < 0:
-            self.left_x = 0
+            left_x = 0
         if self._y - self.size_y < 0:
-            self.top_y = 0
+            top_y = 0
         if self._x + self.size_x > raster_size[0]:
-            self.right_x = raster_size[0]
+            right_x = raster_size[0]
         if self._y + self.size_y > raster_size[1]:
-            self.bottom_y = raster_size[1]
+            bottom_y = raster_size[1]
 
-        return [self.left_x, self.right_x,
-                self.top_y, self.bottom_y]
+        return list(map(int, [left_x, right_x, top_y, bottom_y]))
 
     def clip(self):
         pixels = self.image_extent
