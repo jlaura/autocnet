@@ -179,7 +179,7 @@ def subpixel_phase(sx, sy, dx, dy,
 
         s_size = s_image.shape
         d_size = d_template.shape
-        updated_size_x = int(min(s_size[1], d_size[1])) # Why is this /2?
+        updated_size_x = int(min(s_size[1], d_size[1]))
         updated_size_y = int(min(s_size[0], d_size[0]))
         
         # Have to subtract 1 from even entries or else the round up that
@@ -326,13 +326,13 @@ def subpixel_ciratefi(sx, sy, dx, dy, s_img, d_img, search_size=251, template_si
                                 size_x=search_size, size_y=search_size)
     template = t_roi.clip()
     search = s_roi.clip()
-    
+
     if template is None or search is None:
         return None, None, None
 
     x_offset, y_offset, strength = ciratefi.ciratefi(template, search, **kwargs)
-    dx += (x_offset + dxr)
-    dy += (y_offset + dyr)
+    dx += (x_offset + t_roi.axr)
+    dy += (y_offset + t_roi.ayr)
     return dx, dy, strength
 
 def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=(251, 251), reduction=11, convergence_threshold=1.0, max_dist=50, **kwargs):
