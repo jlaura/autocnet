@@ -418,7 +418,6 @@ def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=(51, 51), reduction=11, c
            delta_dy<= convergence_threshold and\
            abs(dist) <= max_dist:
            break
-
     return dx, dy, metrics
 
 
@@ -662,8 +661,8 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={}, subpixel_templat
 
         if new_x == None or new_y == None:
             measure.ignore = True # Unable to phase match
+            print(f'Subpixel phase matching failed for measure {measure.id}')
             continue
-
         cost = cost_func(dist, template_metric)
 
         if cost <= threshold:
