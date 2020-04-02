@@ -565,7 +565,7 @@ class NetworkNode(Node):
     
     @property
     def parent(self):
-        return self._parent
+        return getattr(self, '_parent', None)
 
     @parent.setter
     def parent(self, parent):

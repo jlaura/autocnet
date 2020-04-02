@@ -9,7 +9,6 @@ from scipy.spatial.distance import cdist
 from shapely.geometry import Point
 import sqlalchemy
 
-from autocnet import Session, engine
 from autocnet.graph.node import Node
 from autocnet.utils import utils
 from autocnet.matcher import cpu_outlier_detector as od
@@ -740,21 +739,27 @@ class NetworkEdge(Edge):
         table_obj : object
                     The declared table class (from db.model)
         """
-        session = Session()
-        res = session.query(table_obj).\
-               filter(table_obj.source == self.source['node_id']).\
-               filter(table_obj.destination == self.destination['node_id'])
-        session.close()
+        with self.parent.session_scope() as session:
+            res = session.query(table_obj).\
+                   filter(table_obj.source == self.source['node_id']).\
+                   filter(table_obj.destination == self.destination['node_id'])
         return res
 
     @property
+    def parent(self):
+        return getattr(self, '_parent', None)
+
+    @parent.setter
+    def parent(self, parent):
+        self._parent = parent
+
+    @property
     def masks(self):
-        session = Session()
-        res = session.query(Edges.masks).\
-                                        filter(Edges.source == self.source['node_id']).\
-                                        filter(Edges.destination == self.destination['node_id']).\
-                                        first()
-        session.close()
+        with self.parent.session_scope() as session:
+            res = session.query(Edges.masks).\
+                                            filter(Edges.source == self.source['node_id']).\
+                                            filter(Edges.destination == self.destination['node_id']).\
+                                            first()
         try:
             df = pd.DataFrame.from_records(res[0])
             df.index = df.index.map(int)
@@ -778,27 +783,24 @@ class NetworkEdge(Edge):
 
 
         df = pd.DataFrame(v)
-        session = Session()
-        res = session.query(Edges).\
-                                filter(Edges.source == self.source['node_id']).\
-                                filter(Edges.destination == self.destination['node_id']).first()
-        if res:
-            as_dict = df.to_dict()
-            dict_check(as_dict)
-            # Update the masks
-            res.masks = as_dict
-            session.add(res)
-            session.commit()
-        session.close()
+        with self.parent.session_scope() as session:
+            res = session.query(Edges).\
+                                    filter(Edges.source == self.source['node_id']).\
+                                    filter(Edges.destination == self.destination['node_id']).first()
+            if res:
+                as_dict = df.to_dict()
+                dict_check(as_dict)
+                # Update the masks
+                res.masks = as_dict
+                session.add(res)
 
     @property
     def costs(self):
         # these are np.float coming out, sqlalchemy needs ints
         ids = list(map(int, self.matches.index.values))
-        session = Session()
-        res = session.query(Costs).filter(Costs.match_id.in_(ids)).all()
-        #qf = q.filter(Costs.match_id.in_(ids))
-        session.close()
+        with self.parent.session_scope() as session:
+            res = session.query(Costs).filter(Costs.match_id.in_(ids)).all()
+            #qf = q.filter(Costs.match_id.in_(ids))
         if res:
         # Parse the JSON dicts in the cost field into a full dimension dataframe
             costs = {r.match_id:r._cost for r in res}
@@ -814,50 +816,45 @@ class NetworkEdge(Edge):
     def costs(self, v):
         to_db_add = []
         # Get the query obj
-        session = Session()
-        q = session.query(Costs)
-        # Need the new instance here to avoid __setattr__ issues
-        df = pd.DataFrame(v)
-        for idx, row in df.iterrows():
-            # Now invert the expanded dict back into a single JSONB column for storage
-            res = q.filter(Costs.match_id == idx).first()
-            if res:
-                #update the JSON blob
-                costs_new_or_updated = row.to_dict()
-                for k, v in costs_new_or_updated.items():
-                    if v is None:
-                        continue
-                    elif np.isnan(v):
-                        v = None
-                    res._cost[k] = v
-                sqlalchemy.orm.attributes.flag_modified(res, '_cost')
-                session.add(res)
-                session.commit()
-            else:
-                row = row.to_dict()
-                costs = row.pop('_costs', {})
-                for k, v in row.items():
-                    if np.isnan(v):
-                        v = None
-                    costs[k] = v
-                cost = Costs(match_id=idx, _cost=costs)
-                to_db_add.append(cost)
-        if to_db_add:
-            session.bulk_save_objects(to_db_add)
-        session.commit()
-        session.close()
+        with self.parent.session_scope() as session:
+            q = session.query(Costs)
+            # Need the new instance here to avoid __setattr__ issues
+            df = pd.DataFrame(v)
+            for idx, row in df.iterrows():
+                # Now invert the expanded dict back into a single JSONB column for storage
+                res = q.filter(Costs.match_id == idx).first()
+                if res:
+                    #update the JSON blob
+                    costs_new_or_updated = row.to_dict()
+                    for k, v in costs_new_or_updated.items():
+                        if v is None:
+                            continue
+                        elif np.isnan(v):
+                            v = None
+                        res._cost[k] = v
+                    sqlalchemy.orm.attributes.flag_modified(res, '_cost')
+                    session.add(res)
+                else:
+                    row = row.to_dict()
+                    costs = row.pop('_costs', {})
+                    for k, v in row.items():
+                        if np.isnan(v):
+                            v = None
+                        costs[k] = v
+                    cost = Costs(match_id=idx, _cost=costs)
+                    to_db_add.append(cost)
+            if to_db_add:
+                session.bulk_save_objects(to_db_add)
 
     @property
     def matches(self):
-        session = Session()
-        q = session.query(Matches)
-        qf = q.filter(Matches.source == self.source['node_id'],
-                      Matches.destination == self.destination['node_id'])
-        odf = pd.read_sql(qf.statement, q.session.bind).set_index('id')
-        df = pd.DataFrame(odf.values, index=odf.index.values, columns=odf.columns.values)
-        df.index.name = 'id'
-        # Explicit close to get the session cleaned up
-        session.close()
+        with self.parent.session_scope() as session:
+            q = session.query(Matches)
+            qf = q.filter(Matches.source == self.source['node_id'],
+                          Matches.destination == self.destination['node_id'])
+            odf = pd.read_sql(qf.statement, q.session.bind).set_index('id')
+            df = pd.DataFrame(odf.values, index=odf.index.values, columns=odf.columns.values)
+            df.index.name = 'id'
         return DbDataFrame(df,  parent=self, name='matches')
 
     @matches.setter
@@ -867,55 +864,51 @@ class NetworkEdge(Edge):
         df = pd.DataFrame(v)
         df.index.name = v.index.name
         # Get the query obj
-        session = Session()
-        q = session.query(Matches)
-        for idx, row in df.iterrows():
-            # Determine if this is an update or the addition of a new row
-            if hasattr(row, 'id'):
-                res = q.filter(Matches.id == row.id).first()
-                match_id = row.id
-            elif v.index.name == 'id':
-                res = q.filter(Matches.id == row.name).first()
-                match_id = row.name
-            else:
-                res = None
-            if res:
-                # update
-                mapping = {}
-                mapping['id'] = match_id
-                for index in row.index:
-                    row_val = row[index]
-                    if isinstance(row_val, (np.int,)):
-                        row_val = int(row_val)
-                    elif isinstance(row_val, (np.float,)):
-                        row_val = float(row_val)
-                    # This should be uncommented if the matches
-                    # df is refactored to be a geodataframe
-                    #elif isinstance(row_val, WKBElement):
-                    #    continue
-                    mapping[index] = row_val
-                to_db_update.append(mapping)
-            else:
-                match = Matches()
-                # Dynamically iterate over the columns and if the match has an
-                # attribute with the column name, set it.
-                for c in df.columns:
-                    if hasattr(match, c):
-                        setattr(match, c, row[c])
-                to_db_add.append(match)
-        if to_db_add:
-            session.bulk_save_objects(to_db_add)
-        if to_db_update:
-            session.bulk_update_mappings(Matches, to_db_update)
-        session.commit()
-        session.close()
+        with self.parent.session_scope() as session:
+            q = session.query(Matches)
+            for idx, row in df.iterrows():
+                # Determine if this is an update or the addition of a new row
+                if hasattr(row, 'id'):
+                    res = q.filter(Matches.id == row.id).first()
+                    match_id = row.id
+                elif v.index.name == 'id':
+                    res = q.filter(Matches.id == row.name).first()
+                    match_id = row.name
+                else:
+                    res = None
+                if res:
+                    # update
+                    mapping = {}
+                    mapping['id'] = match_id
+                    for index in row.index:
+                        row_val = row[index]
+                        if isinstance(row_val, (np.int,)):
+                            row_val = int(row_val)
+                        elif isinstance(row_val, (np.float,)):
+                            row_val = float(row_val)
+                        # This should be uncommented if the matches
+                        # df is refactored to be a geodataframe
+                        #elif isinstance(row_val, WKBElement):
+                        #    continue
+                        mapping[index] = row_val
+                    to_db_update.append(mapping)
+                else:
+                    match = Matches()
+                    # Dynamically iterate over the columns and if the match has an
+                    # attribute with the column name, set it.
+                    for c in df.columns:
+                        if hasattr(match, c):
+                            setattr(match, c, row[c])
+                    to_db_add.append(match)
+            if to_db_add:
+                session.bulk_save_objects(to_db_add)
+            if to_db_update:
+                session.bulk_update_mappings(Matches, to_db_update)
 
     @matches.deleter
     def matches(self):
-        session = Session()
-        session.query(Matches).filter(Matches.source == self.source['node_id'], Matches.destination == self.destination['node_id']).delete()
-        session.commit()
-        session.close()
+        with self.parent.session_scope() as session:
+            session.query(Matches).filter(Matches.source == self.source['node_id'], Matches.destination == self.destination['node_id']).delete()
 
     @property
     def ring(self):
@@ -928,20 +921,17 @@ class NetworkEdge(Edge):
     def ring(self, ring):
         # Setters need a single session and so should not make use of the
         # syntax sugar _from_db
-        session = Session()
-        res = session.query(Edges).\
-               filter(Edges.source == self.source['node_id']).\
-               filter(Edges.destination == self.destination['node_id']).first()
-        if res:
-            res.ring = ring
-        else:
-            edge = Edges(source=self.source['node_id'],
-                         destination=self.destination['node_id'],
-                         ring=ring)
-            session.add(edge)
-            session.commit()
-        session.close()
-        return
+        with self.parent.session_scope() as session:
+            res = session.query(Edges).\
+                   filter(Edges.source == self.source['node_id']).\
+                   filter(Edges.destination == self.destination['node_id']).first()
+            if res:
+                res.ring = ring
+            else:
+                edge = Edges(source=self.source['node_id'],
+                             destination=self.destination['node_id'],
+                             ring=ring)
+                session.add(edge)
 
     @property
     def intersection(self):
@@ -959,19 +949,17 @@ class NetworkEdge(Edge):
 
     @fundamental_matrix.setter
     def fundamental_matrix(self, v):
-        session = Session()
-        res = session.query(Edges).\
-               filter(Edges.source == self.source['node_id']).\
-               filter(Edges.destination == self.destination['node_id']).first()
-        if res:
-            res.fundamental = v
-        else:
-            edge = Edges(source=self.source['node_id'],
-                         destination=self.destination['node_id'],
-                         fundamental = v)
-            session.add(edge)
-        session.commit()
-        session.close()
+        with self.parent.session_scope() as session:
+            res = session.query(Edges).\
+                   filter(Edges.source == self.source['node_id']).\
+                   filter(Edges.destination == self.destination['node_id']).first()
+            if res:
+                res.fundamental = v
+            else:
+                edge = Edges(source=self.source['node_id'],
+                             destination=self.destination['node_id'],
+                             fundamental = v)
+                session.add(edge)
 
     def get_overlapping_indices(self, kps):
         lons, lats, alts = reproject([kps.xm.values, kps.ym.values, kps.zm.values], semi_major, semi_minor, 'geocent', 'latlon')
@@ -981,9 +969,8 @@ class NetworkEdge(Edge):
 
     @property
     def measures(self):
-        session = Session()
-        res = session.query(Measures).filter(sqlalchemy.or_(Measures.imageid == self.source['node_id'], Measures.imageid == self.destination['node_id'])).all()
-        session.close()
+        with self.parent.session_scope() as session:
+            res = session.query(Measures).filter(sqlalchemy.or_(Measures.imageid == self.source['node_id'], Measures.imageid == self.destination['node_id'])).all()
         return res
 
     def network_to_matches(self, ignore_point=False, ignore_measure=False, rejected_jigsaw=False):
@@ -1012,27 +999,26 @@ class NetworkEdge(Edge):
         if source > destin:
             source, destin = destin, source
 
-        session = Session()
-        q = session.query(Points.id,
-                  Points.pointtype,
-                  Measures.id.label('mid'),
-                  Measures.sample,
-                  Measures.line,
-                  Measures.measuretype,
-                  Measures.imageid).\
-            filter(Points.ignore==ignore_point,
-                   Measures.ignore==ignore_measure,
-                   Measures.jigreject==rejected_jigsaw,
-                   sqlalchemy.or_(Measures.imageid==source,
-                                  Measures.imageid==destin)).join(Measures)
+        with self.parent.session_scope() as session:
+            q = session.query(Points.id,
+                      Points.pointtype,
+                      Measures.id.label('mid'),
+                      Measures.sample,
+                      Measures.line,
+                      Measures.measuretype,
+                      Measures.imageid).\
+                filter(Points.ignore==ignore_point,
+                       Measures.ignore==ignore_measure,
+                       Measures.jigreject==rejected_jigsaw,
+                       sqlalchemy.or_(Measures.imageid==source,
+                                      Measures.imageid==destin)).join(Measures)
 
-        df = pd.read_sql(q.statement, engine)
-        matches = []
-        columns = ['point_id', 'source_measure_id', 'destin_measure_id', 'source', 'source_idx', 'destination', 'destination_idx',
-               'lat', 'lon', 'geom', 'source_x', 'source_y', 'destination_x',
-               'destination_y', 'shift_x', 'shift_y', 'original_destination_x',
-               'original_destination_y']
-        session.close()
+            df = pd.read_sql(q.statement, self.parent.engine)
+            matches = []
+            columns = ['point_id', 'source_measure_id', 'destin_measure_id', 'source', 'source_idx', 'destination', 'destination_idx',
+                   'lat', 'lon', 'geom', 'source_x', 'source_y', 'destination_x',
+                   'destination_y', 'shift_x', 'shift_y', 'original_destination_x',
+                   'original_destination_y']
 
         def net2matches(grp, matches, source, destin):
             # Grab the image ids and then get the cartesian product of the ids to know which
@@ -1075,13 +1061,13 @@ class NetworkEdge(Edge):
         """
         mask = self.masks[mask]
         matches_to_disable = mask[mask == False].index
-        session = Session()
 
+        
         bad = {}
-        for o in session.query(Matches).filter(Matches.id.in_(matches_to_disable)).all():
-            # This can't just set both to False, we loose a ton of good points - a bad point in 1 image is not
-            # necessarily bad in all of the other images. Doing it this way assumes that it is...
-            bad[o.source_measure_id] = 1
-            bad[o.destin_measure_id] = 1
-        session.close()
+        with self.parent.session_scope() as session:
+            for o in session.query(Matches).filter(Matches.id.in_(matches_to_disable)).all():
+                # This can't just set both to False, we loose a ton of good points - a bad point in 1 image is not
+                # necessarily bad in all of the other images. Doing it this way assumes that it is...
+                bad[o.source_measure_id] = 1
+                bad[o.destin_measure_id] = 1
         return Counter(bad)
