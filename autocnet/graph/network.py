@@ -28,14 +28,15 @@ from plio.io import io_controlnetwork as cnet
 
 from plurmy import Slurm
 
-from autocnet import Session, engine, config
+from autocnet.config_parser import parse_config
 from autocnet.cg import cg
 from autocnet.graph import markov_cluster
 from autocnet.graph.edge import Edge, NetworkEdge
 from autocnet.graph.node import Node, NetworkNode
 from autocnet.io import network as io_network
 from autocnet.io.db.model import (Images, Keypoints, Matches, Cameras, Points,
-                                  Base, Overlay, Edges, Costs, Measures, JsonEncoder)
+                                  Base, Overlay, Edges, Costs, Measures, JsonEncoder,
+                                  try_db_creation)
 from autocnet.io.db.connection import new_connection, Parent
 from autocnet.vis.graph_view import plot_graph, cluster_plot
 from autocnet.control import control
@@ -1310,8 +1311,6 @@ class NetworkCandidateGraph(CandidateGraph):
 
     def __init__(self, *args, **kwargs):
         super(NetworkCandidateGraph, self).__init__(*args, **kwargs)
-        if config.get('redis', None):
-            self._setup_queues()
         # Job metadata
         self.job_status = defaultdict(dict)
 
@@ -1320,12 +1319,45 @@ class NetworkCandidateGraph(CandidateGraph):
         for s, d, e in self.edges(data='data'):
             e.parent = self
 
-        # Setup the redis queues
-        redis = config.get('redis')
-        if redis:
-            self.processing_queue = redis['processing_queue']
+    def config_from_file(self, filepath):
+        """
+        A NetworkCandidateGraph uses a database. This method parses a config
+        file to set up the connection. Additionally, this loads planetary 
+        information and settings for other operations the candidate graph
+        can perform.
 
-    def _setup_queues(self):
+        Parameters
+        ----------
+        filepath : str
+                   The path to the config file
+        """
+        # The YAML library will raise any parse errors
+        config = parse_config(filepath)
+        
+        # Setup REDIS
+        self._setup_queues(config)
+       
+        # Setup the database
+        self._setup_database(config)
+
+        # Setup the DEM
+        # I dislike having the DEM on the NCG, but in the short term it
+        # is the best solution I think. I don't want to pass the DEM around
+        # for the sensor calls.
+        self._setup_dem(config)
+
+    def _setup_dem(self, config):
+        spatial = config['spatial']
+        self.dem = GeoDataset(spatial.get('dem', None))
+
+    def _setup_database(self, config):
+        db = config['database']
+        self.Session, self.engine = new_connection(config['database'])
+
+        # Attempt to create the database (if it does not exist)
+        try_db_creation(self.engine)
+
+    def _setup_queues(self, config):
         """
         Setup a 2 queue redis connection for pushing and pulling work/results
         """
@@ -1334,6 +1366,7 @@ class NetworkCandidateGraph(CandidateGraph):
         self.redis_queue = StrictRedis(host=conf['host'],
                                        port=conf['port'],
                                        db=0)
+        self.processing_queue = conf['processing_queue']
 
     def empty_queues(self):
         """

@@ -375,9 +375,9 @@ class Measures(BaseMixin, Base):
             v = MeasureType(v)
         self._measuretype = v
 
-if isinstance(Session, sqlalchemy.orm.sessionmaker):
+def try_db_creation(engine):
     from autocnet.io.db.triggers import valid_point_function, valid_point_trigger, valid_geom_function, valid_geom_trigger, ignore_image_function, ignore_image_trigger
-
+    
     # Create the database
     if not database_exists(engine.url):
         create_database(engine.url, template='template_postgis')  # This is a hardcode to the local template
@@ -400,3 +400,4 @@ if isinstance(Session, sqlalchemy.orm.sessionmaker):
                                      Cameras.__table__, Points.__table__,
                                      Measures.__table__, Images.__table__,
                                      Keypoints.__table__])
+

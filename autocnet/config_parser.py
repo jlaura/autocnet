@@ -1,13 +1,9 @@
 import os
 import yaml
 
-def parse_config(name='autocnet_config'):
-    if name not in os.environ.keys():
-        return {}
-    
-    filepath = os.environ[name]
+def parse_config(filepath):
     if not os.path.exists(filepath):
-        raise OSError(f'Specified config file does not exist. Currently set to {filepath}.')
+        raise FileNotFoundError(f'Config file {filepath} does not exist.')
 
     # Not wrapping in a try/except so that we get the 
     # yaml library to raise any issues on parsing
@@ -25,6 +21,10 @@ def parse_config(name='autocnet_config'):
     if database == None:
         raise KeyError('Config is missing the root "database" key.')
     
+    redis = config.get('redis', None)
+    if redis == None:
+        raise KeyError('Config is missing the root "redis" key.')
+
     for k in ['type', 'username', 'password', 'host', 'pgbouncer_port', 'name']:
         if k not in database.keys():
             raise KeyError(f'Missing key: "{k}" in the database section of the config.')
