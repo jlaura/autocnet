@@ -267,12 +267,15 @@ def nearest(pt, search):
     """
     return np.argmin(np.sum((search - pt)**2, axis=1))
 
-def find_side(side):
+def find_side(geom, side):
     """
     Parameters
     ----------
     side: str
             describes which extrema you cube you want; can equal 'east' or 'west'
+
+    geom : obj
+           A shapely geom object
 
     Returns
     -------
@@ -290,15 +293,6 @@ def find_side(side):
     func = func[side]
     order = {'east': 'desc', 'west': 'asc'}
     order = order[side]
-    query = f"""
-    select ST_AsText(geom) from images
-    order by {func}(geom) {order}
-    limit 1 """
-
-    session = Session()
-    geom = session.execute(query).first()
-    geom = wkt.loads(geom[0])
-    session.close()
 
     #find eastern/wertern most side of east_geom/west_geom
     fp = geom.minimum_rotated_rectangle
