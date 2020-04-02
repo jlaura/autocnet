@@ -1,4 +1,5 @@
 from collections import defaultdict, OrderedDict
+from contextlib import contextmanager
 import itertools
 import json
 import math
@@ -1314,8 +1315,11 @@ class NetworkCandidateGraph(CandidateGraph):
         # Job metadata
         self.job_status = defaultdict(dict)
 
+        # Set the parents of the nodes/edges and populate the database
+        # if unpopulated.
         for i, d in self.nodes(data='data'):
             d.parent = self
+            d.popluate_db()
         for s, d, e in self.edges(data='data'):
             e.parent = self
 
@@ -1367,6 +1371,21 @@ class NetworkCandidateGraph(CandidateGraph):
                                        port=conf['port'],
                                        db=0)
         self.processing_queue = conf['processing_queue']
+
+    @contextmanager
+    def session_scope(self):
+     """
+     Provide a transactional scope around a series of operations.
+     """
+     session = self.Session()
+     try:
+         yield session
+         session.commit()
+     except:
+         session.rollback()
+         raise
+     finally:
+         session.close()
 
     def empty_queues(self):
         """
@@ -1494,14 +1513,6 @@ class NetworkCandidateGraph(CandidateGraph):
         # If the job was successful, no need to resubmit
         if msg['success'] == True:
             return
-
-    def generate_vrts(self, **kwargs):
-        """
-        For the nodes in the graph, genreate a GDAL compliant vrt file.
-        This is just a dispatcher to the knoten generate_vrt file.
-        """
-        for _, n in self.nodes(data='data'):
-            n.generate_vrt(**kwargs)
 
     def to_isis(self, path, flistpath=None,sql = """
 SELECT points.id,

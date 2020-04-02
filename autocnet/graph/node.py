@@ -13,7 +13,6 @@ from skimage.transform import resize
 import shapely
 from knoten.csm import generate_latlon_footprint, generate_vrt, create_camera, generate_boundary
 
-from autocnet import Session, engine, config
 from autocnet.matcher import cpu_extractor as fe
 from autocnet.matcher import cpu_outlier_detector as od
 from autocnet.cg import cg
@@ -508,45 +507,39 @@ class Node(dict, MutableMapping):
         return shapely.geometryPolygon(reproj)
 
 class NetworkNode(Node):
-    def __init__(self, *args, parent=None, **kwargs):
+    def __init__(self, *args, **kwargs):
         super(NetworkNode, self).__init__(*args, **kwargs)
         # If this is the first time that the image is seen, add it to the DB
-        if parent is None:
-            self.parent = Parent(config['database'])
-        else:
-            self.parent = parent
-
-        # Create a session to work in
-        session = Session()
-
-        # For now, just use the PATH to determine if the node/image is in the DB
-        res = session.query(Images).filter(Images.path == kwargs['image_path']).first()
-        session.close()
-        if res is None:
-            kpspath = io_keypoints.create_output_path(self.geodata.file_name)
-
-            # Create the keypoints entry
-            kps = Keypoints(path=kpspath, nkeypoints=0)
-            cam = self.create_camera()
-            try:
-                fp, cam_type = self.footprint
-
-            except Exception as e:
-                warnings.warn('Unable to generate image footprint.\n{}'.format(e))
-                fp = None
-            # Create the image
-            i = Images(name=kwargs['image_name'],
-                       path=kwargs['image_path'],
-                       geom=fp,
-                       keypoints=kps,
-                       cameras=cam,
-                       serial=self.isis_serial,
-                       cam_type=cam_type)
-            session = Session()
-            session.add(i)
-            session.commit()
-            session.close()
         self.job_status = defaultdict(dict)
+
+    def populate_db(self):
+        with self.parent.session_scope() as session:
+            res = session.query(Images).filter(Images.path == kwargs['image_path']).first()
+            if res:
+                # Image already exists
+                return
+
+        kpspath = io_keypoints.create_output_path(self.geodata.file_name)
+        # Create the keypoints entry
+        kps = Keypoints(path=kpspath, nkeypoints=0)
+        
+        try:
+            fp, cam_type = self.footprint
+        except Exception as e:
+            warnings.warn('Unable to generate image footprint.\n{}'.format(e))
+            fp = None
+        # Create the image
+        i = Images(name=kwargs['image_name'],
+                   path=kwargs['image_path'],
+                   geom=fp,
+                   keypoints=kps,
+                   #cameras=cam,
+                   serial=self.isis_serial,
+                   cam_type=cam_type)
+        
+        session = self.parent.Session()
+        i.create(session)
+        session.close()
 
     def _from_db(self, table_obj, key='image_id'):
         """
@@ -566,10 +559,17 @@ class NetworkNode(Node):
         """
         if 'node_id' not in self.keys():
             return
-        session = Session()
-        res = session.query(table_obj).filter(getattr(table_obj,key) == self['node_id']).first()
-        session.close()
+        with self.parent.session_scope() as session:
+            res = session.query(table_obj).filter(getattr(table_obj,key) == self['node_id']).first()
         return res
+    
+    @property
+    def parent(self):
+        return self._parent
+
+    @parent.setter
+    def parent(self, parent):
+        self._parent = parent
 
     @property
     def keypoint_file(self):
@@ -589,14 +589,11 @@ class NetworkNode(Node):
     def keypoints(self, kps):
         session = Session()
         io_keypoints.to_hdf(self.keypoint_file, keypoints=kps)
-        res = session.query(Keypoints).filter(getattr(Keypoints,'image_id') == self['node_id']).first()
+        
 
-        if res is None:
-            _ = self.keypoint_file
-            res = self._from_db(Keypoints)
-        res.nkeypoints = len(kps)
-        session.commit()
-        session.close()
+        res = self._from_db(Keypoints)
+        with self.parent.session_scope() as session:
+            res.nkeypoints = len(kps)
 
     @property
     def descriptors(self):
@@ -618,14 +615,23 @@ class NetworkNode(Node):
         res = self._from_db(Keypoints)
         return res.nkeypoints if res is not None else 0
 
-    def create_camera(self):
+    def create_camera(self, url):
+        """
+        Creates a CSM sensor for the node and serializes the state
+        to the DB,
+
+        Parameters
+        ----------
+        url : str
+              The URI to a service that can create an ISD to instantiate
+              a sensor.
+        """
         # Create the camera entry
         import pvl
         import requests
         import json
 
         label = pvl.dumps(self.geodata.metadata).decode()
-        url = config['pfeffernusse']['url']
         response = requests.post(url, json={'label':label})
         response = response.json()
         model_name = response.get('name_model', None)
@@ -657,15 +663,13 @@ class NetworkNode(Node):
             plugin = csmapi.Plugin.findPlugin('UsgsAstroPluginCSM')
             if res is not None:
                 self._camera = plugin.constructModelFromState(res.camera)
-            else:
-                self.create_camera()
         return self._camera
 
     @property
     def footprint(self):
-        session = Session()
-        res = session.query(Images).filter(Images.id == self['node_id']).first()
-        session.close()
+        with self.parent.session_scope() as session:
+            res = session.query(Images).filter(Images.id == self['node_id']).first()
+        
         # not in database, create footprint
         if res is None:
             # get ISIS footprint if possible
@@ -678,13 +682,9 @@ class NetworkNode(Node):
             # Get CSM footprint
             else:
                 boundary = generate_boundary(self.geodata.raster_size[::-1])  # yx to xy
-                try:
-                    geodata = GeoDataset(config['spatial']['dem'])
-                except Exception as e:
-                    warnings.warn('Unable to get the Geodata from dem.\n{}'.format(e))
-                    geodata = 0.0
-
-                footprint_latlon = generate_latlon_footprint(self.camera, boundary, dem=geodata)
+                footprint_latlon = generate_latlon_footprint(self.camera,
+                                                             boundary, 
+                                                             dem=parent.dem)
                 footprint_latlon.FlattenTo2D()
                 cam_type = 'csm'
                 return footprint_latlon, cam_type
@@ -695,17 +695,15 @@ class NetworkNode(Node):
 
     @property
     def points(self):
-        session = Session()
-        pids = session.query(Measures.pointid).filter(Measures.imageid == self['node_id']).all()
-        res = session.query(Points).filter(Points.id.in_(pids)).all()
-        session.close()
+        with self.parent.session_scope() as session:
+            pids = session.query(Measures.pointid).filter(Measures.imageid == self['node_id']).all()
+            res = session.query(Points).filter(Points.id.in_(pids)).all()
         return res
 
     @property
     def measures(self):
-        session = Session()
-        res = session.query(Measures).filter(Measures.imageid == self['node_id']).all()
-        session.close()
+        with self.parent.session_scope() as session:
+            res = session.query(Measures).filter(Measures.imageid == self['node_id']).all()
         return res
 
     @property
@@ -713,8 +711,8 @@ class NetworkNode(Node):
         """
         Gets the ignore flag from the Images table
         """
-        session = Session()
-        res = self._from_db(Images, key='id')
+        with self.parent.session_scope() as session:
+            res = self._from_db(Images, key='id')
         return res.ignore
 
     @ignore.setter
@@ -722,17 +720,7 @@ class NetworkNode(Node):
         """
         Sets the ignore flag in the Images table
         """
-        session = Session()
-        res = session.query(Images).filter(getattr(Images,'id') == self['node_id']).one()
-        res.ignore = ignore
-        session.commit()
-        session.close()
+        with self.parent.session_scope() as session:
+            res = session.query(Images).filter(getattr(Images,'id') == self['node_id']).one()
+            res.ignore = ignore
 
-    def generate_vrt(self, **kwargs):
-        """
-        Using the image footprint, generate a VRT to that is usable inside
-        of a GIS (QGIS or ArcGIS) to visualize a warped version of this image.
-        """
-        outpath = config['directories']['vrt_dir']
-        generate_vrt.warped_vrt(self.camera, self.geodata.raster_size,
-                                self.geodata.file_name, outpath=outpath)
