@@ -18,16 +18,10 @@ from geoalchemy2.shape import from_shape, to_shape
 import osgeo
 import shapely
 from shapely.geometry import Point
-from autocnet import engine, Session, config
 from autocnet.transformation.spatial import reproject
 from autocnet.utils.serializers import JsonEncoder
 
 Base = declarative_base()
-
-# Default to mars if no config is set
-spatial = config.get('spatial', {'latitudinal_srid': 949900, 'rectangular_srid': 949980})
-latitudinal_srid = spatial['latitudinal_srid']
-rectangular_srid = spatial['rectangular_srid']
 
 class BaseMixin(object):
     @classmethod
@@ -38,7 +32,7 @@ class BaseMixin(object):
         return obj
 
     @staticmethod
-    def bulkadd(iterable):
+    def bulkadd(iterable, Session):
         session = Session()
         session.add_all(iterable)
         session.commit()
@@ -105,6 +99,7 @@ class Json(TypeDecorator):
 
 class Keypoints(BaseMixin, Base):
     __tablename__ = 'keypoints'
+    latitudinal_srid = -1
     id = Column(Integer, primary_key=True, autoincrement=True)
     image_id = Column(Integer, ForeignKey("images.id", ondelete="CASCADE"))
     convex_hull_image = Column(Geometry('POLYGON'))
@@ -141,6 +136,7 @@ class Costs(BaseMixin, Base):
 
 class Matches(BaseMixin, Base):
     __tablename__ = 'matches'
+    latitudinal_srid = -1
     id = Column(Integer, primary_key=True, autoincrement=True)
     point_id = Column(Integer)
     source_measure_id = Column(Integer)
@@ -171,7 +167,7 @@ class Matches(BaseMixin, Base):
     @geom.setter
     def geom(self, geom):
         if geom:  # Supports instances where geom is explicitly set to None.
-            self._geom = from_shape(geom, srid=latitudinal_srid)
+            self._geom = from_shape(geom, srid=self.latitudinal_srid)
 
 class Cameras(BaseMixin, Base):
     __tablename__ = 'cameras'
@@ -182,7 +178,7 @@ class Cameras(BaseMixin, Base):
 
 class Images(BaseMixin, Base):
     __tablename__ = 'images'
-
+    latitudinal_srid = -1
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String)
     path = Column(String)
@@ -224,10 +220,11 @@ class Images(BaseMixin, Base):
         if newgeom is None:
             self._geom = None
         else:
-            self._geom = from_shape(newgeom, srid=latitudinal_srid)
+            self._geom = from_shape(newgeom, srid=self.latitudinal_srid)
 
 class Overlay(BaseMixin, Base):
     __tablename__ = 'overlay'
+    latitudinal_srid = -1
     id = Column(Integer, primary_key=True, autoincrement=True)
     intersections = Column(ARRAY(Integer))
     #geom = Column(Geometry(geometry_type='POLYGON', management=True))  # sqlite
@@ -241,10 +238,10 @@ class Overlay(BaseMixin, Base):
             return self._geom
     @geom.setter
     def geom(self, geom):
-        self._geom = from_shape(geom, srid=latitudinal_srid)
+        self._geom = from_shape(geom, srid=self.atitudinal_srid)
 
     @classmethod
-    def overlapping_larger_than(cls, size_threshold):
+    def overlapping_larger_than(cls, size_threshold, Session):
         """
         Query the Overlay table for an iterable of responses where the objects
         in the iterable have an area greater than a given size.
@@ -271,6 +268,8 @@ class PointType(enum.IntEnum):
 
 class Points(BaseMixin, Base):
     __tablename__ = 'points'
+    latitudinal_srid = -1
+    rectangular_srid = -1
     id = Column(Integer, primary_key=True, autoincrement=True)
     _pointtype = Column("pointType", IntEnum(PointType), nullable=False)  # 2, 3, 4 - Could be an enum in the future, map str to int in a decorator
     identifier = Column(String, unique=True)
@@ -375,7 +374,7 @@ class Measures(BaseMixin, Base):
             v = MeasureType(v)
         self._measuretype = v
 
-def try_db_creation(engine):
+def try_db_creation(engine, config):
     from autocnet.io.db.triggers import valid_point_function, valid_point_trigger, valid_geom_function, valid_geom_trigger, ignore_image_function, ignore_image_trigger
     
     # Create the database
@@ -391,8 +390,17 @@ def try_db_creation(engine):
         event.listen(Images.__table__, 'after_create', valid_geom_trigger)
         event.listen(Base.metadata, 'before_create', ignore_image_function)
         event.listen(Images.__table__, 'after_create', ignore_image_trigger)
-
+    
     Base.metadata.bind = engine
+    
+    # Set the class attributes for the SRIDs
+    latitudinal_srid = config['spatial']['latitudinal_srid']
+    rectangular_srid = config['spatial']['rectangular_srid']
+
+    Points.rectangular_srid = rectangular_srid
+    for cls in [Points, Overlay, Images, Keypoints, Matches]:
+        setattr(cls, 'latitudinal_srid', latitudinal_srid)
+        
     # If the table does not exist, this will create it. This is used in case a
     # user has manually dropped a table so that the project is not wrecked.
     Base.metadata.create_all(tables=[Overlay.__table__,

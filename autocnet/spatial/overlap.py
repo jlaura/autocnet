@@ -41,8 +41,11 @@ INSERT INTO overlay(intersections, geom) SELECT row.intersections, row.geom FROM
   FROM iid GROUP BY iid.geom) AS row WHERE array_length(intersections, 1) > 1;
 """
 
-def place_points_in_overlaps(nodes, size_threshold=0.0007,
-                             distribute_points_kwargs={}, cam_type='csm'):
+def place_points_in_overlaps(nodes,
+                             Session,
+                             size_threshold=0.0007,
+                             distribute_points_kwargs={}, 
+                             cam_type='csm'):
     """
     Place points in all of the overlap geometries by back-projecing using
     sensor models.
@@ -55,11 +58,14 @@ def place_points_in_overlaps(nodes, size_threshold=0.0007,
             as the value. This could be a NetworkCandidateGraph or some
             other dict-like object.
 
+    Session : obj
+              The session object from the NetworkCandidateGraph
+
     size_threshold : float
                      overlaps with area <= this threshold are ignored
     """
     points = []
-    for o in Overlay.overlapping_larger_than(size_threshold):
+    for o in Overlay.overlapping_larger_than(size_threshold, Session):
         overlaps = o.intersections
         if overlaps == None:
             continue
@@ -67,7 +73,7 @@ def place_points_in_overlaps(nodes, size_threshold=0.0007,
         overlapnodes = [nodes[id]["data"] for id in overlaps]
         points.extend(place_points_in_overlap(overlapnodes, o.geom, cam_type=cam_type,
                                               distribute_points_kwargs=distribute_points_kwargs))
-    Points.bulkadd(points)
+    Points.bulkadd(points, Session)
 
 def cluster_place_points_in_overlaps(size_threshold=0.0007,
                                      distribute_points_kwargs={},

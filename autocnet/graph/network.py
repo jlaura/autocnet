@@ -1359,7 +1359,7 @@ class NetworkCandidateGraph(CandidateGraph):
         self.Session, self.engine = new_connection(config['database'])
 
         # Attempt to create the database (if it does not exist)
-        try_db_creation(self.engine)
+        try_db_creation(self.engine, config)
 
     def _setup_queues(self, config):
         """
