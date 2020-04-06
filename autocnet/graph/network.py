@@ -39,6 +39,8 @@ from autocnet.io.db.model import (Images, Keypoints, Matches, Cameras, Points,
                                   Base, Overlay, Edges, Costs, Measures, JsonEncoder,
                                   try_db_creation)
 from autocnet.io.db.connection import new_connection, Parent
+from autocnet.matcher import subpixel
+from autocnet.matcher import cross_instrument_matcher as cim
 from autocnet.vis.graph_view import plot_graph, cluster_plot
 from autocnet.control import control
 from autocnet.spatial.overlap import compute_overlaps_sql
@@ -1336,36 +1338,36 @@ class NetworkCandidateGraph(CandidateGraph):
                    The path to the config file
         """
         # The YAML library will raise any parse errors
-        config = parse_config(filepath)
+        self.config = parse_config(filepath)
         
         # Setup REDIS
-        self._setup_queues(config)
+        self._setup_queues()
        
         # Setup the database
-        self._setup_database(config)
+        self._setup_database()
 
         # Setup the DEM
         # I dislike having the DEM on the NCG, but in the short term it
         # is the best solution I think. I don't want to pass the DEM around
         # for the sensor calls.
-        self._setup_dem(config)
+        self._setup_dem()
 
-    def _setup_dem(self, config):
-        spatial = config['spatial']
+    def _setup_dem(self):
+        spatial = self.config['spatial']
         self.dem = GeoDataset(spatial.get('dem', None))
 
-    def _setup_database(self, config):
-        db = config['database']
-        self.Session, self.engine = new_connection(config['database'])
+    def _setup_database(self):
+        db = self.config['database']
+        self.Session, self.engine = new_connection(self.config['database'])
 
         # Attempt to create the database (if it does not exist)
-        try_db_creation(self.engine, config)
+        try_db_creation(self.engine, self.config)
 
-    def _setup_queues(self, config):
+    def _setup_queues(self):
         """
         Setup a 2 queue redis connection for pushing and pulling work/results
         """
-        conf = config['redis']
+        conf = self.config['redis']
 
         self.redis_queue = StrictRedis(host=conf['host'],
                                        port=conf['port'],
@@ -1486,10 +1488,10 @@ class NetworkCandidateGraph(CandidateGraph):
         # Submit the jobs
         submitter = Slurm('acn_submit',
                      job_name=function,
-                     mem_per_cpu=config['cluster']['processing_memory'],
+                     mem_per_cpu=self.config['cluster']['processing_memory'],
                      time=walltime,
-                     partition=config['cluster']['queue'],
-                     output=config['cluster']['cluster_log_dir']+f'/autocnet.{function}-%j')
+                     partition=self.config['cluster']['queue'],
+                     output=self.config['cluster']['cluster_log_dir']+f'/autocnet.{function}-%j')
         submitter.submit(array='1-{}'.format(job_counter))
         return job_counter
 
@@ -1591,7 +1593,7 @@ WHERE
 
         if flistpath is None:
             flistpath = os.path.splitext(path)[0] + '.lis'
-        target = config['spatial'].get('target', None)
+        target = self.config['spatial'].get('target', None)
 
         ids = df['imageid'].unique()
         fpaths = [self.nodes[i]['data']['image_path'] for i in ids]
@@ -1834,7 +1836,7 @@ WHERE
                 adjacency[spath].append(dpath)
         session.close()
         # Add nodes that do not overlap any images
-        obj = cls(adjacency, node_id_map=adjacency_lookup, config=config)
+        obj = cls(adjacency, node_id_map=adjacency_lookup, config=self.config)
 
         return obj
 
@@ -1868,7 +1870,7 @@ WHERE
         session.close()
 
     def place_points_from_cnet(self, cnet):
-        semi_major, semi_minor = config["spatial"]["semimajor_rad"], config["spatial"]["semiminor_rad"]
+        semi_major, semi_minor = self.config["spatial"]["semimajor_rad"], self.config["spatial"]["semiminor_rad"]
 
         if isinstance(cnet, str):
             cnet = from_isis(cnet)
@@ -1936,10 +1938,7 @@ WHERE
         called on next cluster job launch, causing failures. This method provides
         a quick check for left over jobs.
         """
-        conf = config['redis']
-        queue = StrictRedis(host=conf['host'],
-                            port=conf['port'])
-        llen = queue.llen(conf['processing_queue'])
+        llen = self.redis_queue.llen(conf['processing_queue'])
         return llen
 
     @staticmethod
@@ -1948,7 +1947,228 @@ WHERE
         Clear the processing queue of any left over jobs from a previous cluster
         job cancellation or hanging jobs.
         """
-        conf = config['redis']
-        queue = StrictRedis(host=conf['host'],
-                            port=conf['port'])
-        queue.flushdb()
+        self.redis_queue.flushdb()
+
+    def cluster_subpixel_register_measures(self, iterative_phase_kwargs={'size': 251},
+                                     subpixel_template_kwargs={'image_size':(251,251)},
+                                     cost_kwargs={},
+                                     threshold=0.005,
+                                     filters={},
+                                     walltime='00:10:00',
+                                     chunksize=1000,
+                                     exclude=None):
+
+        session = self.Session()
+        query = session.query(Measures)
+        for attr, value in filters.items():
+            query = query.filter(getattr(Measures, attr)==value)
+        res = query.all()
+        for i, measure in enumerate(res):
+            msg = {'id' : measure.id,
+                   'iterative_phase_kwargs' : iterative_phase_kwargs,
+                   'subpixel_template_kwargs' : subpixel_template_kwargs,
+                   'threshold':threshold,
+                   'cost_kwargs': cost_kwargs,
+                   'walltime' : walltime}
+            self.redis_queue.rpush(self.processing_queue, json.dumps(msg, cls=JsonEncoder))
+        session.close()
+
+        job_counter = i + 1
+
+        # Submit the jobs
+        submitter = Slurm('acn_subpixel_measure',
+                     job_name='subpixel_register_measure',
+                     mem_per_cpu=self.config['cluster']['processing_memory'],
+                     time=walltime,
+                     partition=self.config['cluster']['queue'],
+                     output=self.config['cluster']['cluster_log_dir']+f'/autocnet.subpixel_register-%j')
+        submitter.submit(array='1-{}'.format(job_counter), chunksize=chunksize, exclude=exclude)
+        return job_counter
+
+    def cluster_subpixel_register_points(self, iterative_phase_kwargs={'size': 251},
+                                         subpixel_template_kwargs={'image_size':(251,251)},
+                                         cost_kwargs={},
+                                         threshold=0.005,
+                                         filters={},
+                                         walltime='00:10:00',
+                                         chunksize=1000,
+                                         exclude=None):
+        """
+        Distributed subpixel registration of all of the points in a given DB table.
+
+
+        Parameters
+        ----------
+        pointid : int
+                  The identifier of the point in the DB
+
+        iterative_phase_kwargs : dict
+                                 Any keyword arguments passed to the phase matcher
+
+        subpixel_template_kwargs : dict
+                                   Ay keyword arguments passed to the template matcher
+
+        cost : func
+               A generic cost function accepting two arguments (x,y), where x is the
+               distance that a point has shifted from the original, sensor identified
+               intersection, and y is the correlation coefficient coming out of the
+               template matcher.
+
+        threshold : numeric
+                    measures with a cost <= the threshold are marked as ignore=True in
+                    the database.
+        filters : dict
+                  with keys equal to attributes of the Points mapping and values
+                  equal to some criteria.
+        exclude : str
+                  string containing the name(s) of any slurm nodes to exclude when
+                  completing a cluster job. (e.g.: 'gpu1' or 'gpu1,neb12')
+        """
+
+        session = self.Session()
+        query = session.query(Points)
+        for attr, value in filters.items():
+            query = query.filter(getattr(Points, attr)==value)
+        res = query.all()
+        for i, point in enumerate(res):
+            msg = {'id' : point.id,
+                   'iterative_phase_kwargs' : iterative_phase_kwargs,
+                   'subpixel_template_kwargs' : subpixel_template_kwargs,
+                   'threshold':threshold,
+                   'cost_kwargs': cost_kwargs,
+                   'walltime' : walltime}
+            self.redis_queue.rpush(self.processing_queue, json.dumps(msg, cls=JsonEncoder))
+        session.close()
+
+        job_counter = i + 1
+
+        # Submit the jobs
+        submitter = Slurm('acn_subpixel',
+                     job_name='subpixel_register_points',
+                     mem_per_cpu=self.config['cluster']['processing_memory'],
+                     time=walltime,
+                     partition=self.config['cluster']['queue'],
+                     output=self.config['cluster']['cluster_log_dir']+f'/autocnet.subpixel_register-%j')
+        submitter.submit(array='1-{}%24'.format(job_counter), chunksize=chunksize, exclude=exclude)
+        return job_counter
+
+    def cluster_place_points_in_overlaps(self, size_threshold=0.0007,
+                                     distribute_points_kwargs={},
+                                     walltime='00:10:00',
+                                     chunksize=1000,
+                                     exclude=None,
+                                     cam_type="csm",
+                                     query_string='SELECT overlay.id FROM overlay LEFT JOIN points ON ST_INTERSECTS(overlay.geom, points.geom) WHERE points.id IS NULL AND ST_AREA(overlay.geom) >= {};'):
+        """
+        Place points in all of the overlap geometries by back-projecing using
+        sensor models. This method uses the cluster to process all of the overlaps
+        in parallel. See place_points_in_overlap and acn_overlaps.
+
+        Parameters
+        ----------
+        size_threshold : float
+            overlaps with area <= this threshold are ignored
+
+        walltime : str
+            Cluster job wall time as a string HH:MM:SS
+
+        cam_type : str
+                   options: {"csm", "isis"}
+                   Pick what kind of camera model implementation to use
+
+        query : str
+
+        exclude : str
+                  string containing the name(s) of any slurm nodes to exclude when
+                  completing a cluster job. (e.g.: 'gpu1' or 'gpu1,neb12')
+        """
+        # Push the job messages onto the queue
+        session = self.Session()
+        ids = [i[0] for i in session.execute(query_string.format(size_threshold))]
+        session.close()
+        for i, id in enumerate(ids):
+            msg = {'id' : id,
+                   'distribute_points_kwargs' : distribute_points_kwargs,
+                   'walltime' : walltime,
+                   'cam_type': cam_type}
+            self.redis_queue.rpush(self.processing_queue, json.dumps(msg, cls=JsonEncoder))
+        # Submit the jobs
+        submitter = Slurm('acn_overlaps',
+                     job_name='place_points',
+                     mem_per_cpu=self.config['cluster']['processing_memory'],
+                     time=walltime,
+                     partition=self.config['cluster']['queue'],
+                     output=self.config['cluster']['cluster_log_dir']+'/autocnet.place_points-%j')
+        job_counter = i+1
+        submitter.submit(array='1-{}%24'.format(job_counter), chunksize=chunksize, exclude=exclude)
+        return job_counter
+
+    def cluster_propagate_control_network(self, 
+                                          base_cnet, 
+                                          walltime='00:20:00', 
+                                          chunksize=1000, 
+                                          exclude=None):
+        warnings.warn('This function is not well tested. No tests currently exists \
+        in the test suite for this version of the function.')
+
+        # Setup the redis queue
+        rqueue = StrictRedis(host=config['redis']['host'],
+                             port=config['redis']['port'],
+                             db=0)
+
+        # Push the job messages onto the queue
+        queuename = config['redis']['processing_queue']
+
+        groups = base_cnet.groupby('pointid').groups
+        for cpoint, indices in groups.items():
+            measures = base_cnet.loc[indices]
+            measure = measures.iloc[0]
+
+            p = measure.point
+
+            # get image in the destination that overlap
+            lon, lat = measures["point"].iloc[0].xy
+            msg = {'lon' : lon[0],
+                   'lat' : lat[0],
+                   'pointid' : cpoint,
+                   'paths' : measures['path'].tolist(),
+                   'lines' : measures['line'].tolist(),
+                   'samples' : measures['sample'].tolist(),
+                   'walltime' : walltime}
+            rqueue.rpush(queuename, json.dumps(msg, cls=JsonEncoder))
+
+        # Submit the jobs
+        submitter = Slurm('acn_propagate',
+                     job_name='cross_instrument_matcher',
+                     mem_per_cpu=config['cluster']['processing_memory'],
+                     time=walltime,
+                     partition=config['cluster']['queue'],
+                     output=config['cluster']['cluster_log_dir']+'/autocnet.cim-%j')
+        job_counter = len(groups.items())
+        submitter.submit(array='1-{}'.format(job_counter))
+        return job_counter
+    
+    def subpixel_register_points(self, **kwargs):
+        subpixel.subpixel_register_points(self.Session, **kwargs)
+
+    def subpixel_register_point(self, pointid, **kwargs):
+        subpixel.subpixel_register_point(self.Session, pointid, **kwarg)
+
+    def subpixel_regiter_mearure(self, measureid, **kwargs):
+        subpixel.subpixel_register_measure(self.Session, measureid, **kwargs)
+
+    def propagate_control_network(self, control_net, **kwargs):
+        cim.propagate_control_network(self.Session, 
+                                      self.config, 
+                                      self.dem,
+                                      control_net) 
+
+    def generate_ground_points(self, ground_mosaic, **kwargs):
+        cim.generate_ground_points(self.Session, ground_mosaic, **kwargs)
+
+    def place_points_in_overlaps(self, nodes, **kwargs):
+        overlap.place_points_in_overlaps(self.Session,
+                                         self.config,
+                                         self.dem,
+                                         nodes, 
+                                         **kwargs)

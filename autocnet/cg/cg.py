@@ -15,7 +15,6 @@ from shapely.affinity import scale
 from shapely import wkt
 
 from autocnet.utils import utils
-from autocnet import Session
 
 
 
