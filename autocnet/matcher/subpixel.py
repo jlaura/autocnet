@@ -3,8 +3,6 @@ from math import modf, floor
 import numpy as np
 
 from skimage.feature import register_translation
-from redis import StrictRedis
-from plurmy import Slurm
 
 from skimage import transform as tf
 
@@ -12,7 +10,6 @@ from matplotlib import pyplot as plt
 
 from plio.io.io_gdal import GeoDataset
 
-from autocnet import Session, config
 from autocnet.matcher.naive_template import pattern_match, pattern_match_autoreg
 from autocnet.matcher import ciratefi
 from autocnet.io.db.model import Measures, Points, Images, JsonEncoder
@@ -545,8 +542,11 @@ def geom_match(base_cube, input_cube, bcenter_x, bcenter_y, size_x=60, size_y=60
     return sample, line, dist, maxcorr, corrmap
 
 
-def subpixel_register_measure(measureid, iterative_phase_kwargs={}, subpixel_template_kwargs={},
-                            cost_func=lambda x,y: 1/x**2 * y, threshold=0.005):
+def subpixel_register_measure(Session, 
+                              measureid, 
+                              iterative_phase_kwargs={}, 
+                              subpixel_template_kwargs={},
+                              cost_func=lambda x,y: 1/x**2 * y, threshold=0.005):
 
     session = Session()
 
@@ -609,7 +609,9 @@ def subpixel_register_measure(measureid, iterative_phase_kwargs={}, subpixel_tem
     session.close()
 
 
-def subpixel_register_point(pointid, iterative_phase_kwargs={}, subpixel_template_kwargs={},
+def subpixel_register_point(Session,
+                            pointid, iterative_phase_kwargs={}, 
+                            subpixel_template_kwargs={},
                             cost_func=lambda x,y: 1/x**2 * y, threshold=0.005):
 
     """
@@ -618,6 +620,9 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={}, subpixel_templat
 
     Parameters
     ----------
+    Session : obj
+              An SQLAlchemy Session factory
+
     pointid : int
               The identifier of the point in the DB
 
@@ -681,7 +686,8 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={}, subpixel_templat
     session.commit()
     session.close()
 
-def subpixel_register_points(iterative_phase_kwargs={'size': 251},
+def subpixel_register_points(Session,
+                             iterative_phase_kwargs={'size': 251},
                              subpixel_template_kwargs={'image_size':(251,251)},
                              cost_kwargs={},
                              threshold=0.005):
@@ -690,6 +696,9 @@ def subpixel_register_points(iterative_phase_kwargs={'size': 251},
 
     Parameters
     ----------
+    Session : obj
+              A SQLAlchemy Session factory.
+
     pointid : int
               The identifier of the point in the DB
 
@@ -717,123 +726,4 @@ def subpixel_register_points(iterative_phase_kwargs={'size': 251},
                                 iterative_phase_kwargs=iterative_phase_kwargs,
                                 subpixel_template_kwargs=subpixel_template_kwargs,
                                 **cost_kwargs)
-
-def cluster_subpixel_register_points(iterative_phase_kwargs={'size': 251},
-                                     subpixel_template_kwargs={'image_size':(251,251)},
-                                     cost_kwargs={},
-                                     threshold=0.005,
-                                     filters={},
-                                     walltime='00:10:00',
-                                     chunksize=1000,
-                                     exclude=None):
-    """
-    Distributed subpixel registration of all of the points in a given DB table.
-
-
-    Parameters
-    ----------
-    pointid : int
-              The identifier of the point in the DB
-
-    iterative_phase_kwargs : dict
-                             Any keyword arguments passed to the phase matcher
-
-    subpixel_template_kwargs : dict
-                               Ay keyword arguments passed to the template matcher
-
-    cost : func
-           A generic cost function accepting two arguments (x,y), where x is the
-           distance that a point has shifted from the original, sensor identified
-           intersection, and y is the correlation coefficient coming out of the
-           template matcher.
-
-    threshold : numeric
-                measures with a cost <= the threshold are marked as ignore=True in
-                the database.
-    filters : dict
-              with keys equal to attributes of the Points mapping and values
-              equal to some criteria.
-    exclude : str
-              string containing the name(s) of any slurm nodes to exclude when
-              completing a cluster job. (e.g.: 'gpu1' or 'gpu1,neb12')
-    """
-    # Setup the redis queue
-    rqueue = StrictRedis(host=config['redis']['host'],
-                        port=config['redis']['port'],
-                        db=0)
-
-    # Push the job messages onto the queue
-    queuename = config['redis']['processing_queue']
-
-    session = Session()
-    query = session.query(Points)
-    for attr, value in filters.items():
-        query = query.filter(getattr(Points, attr)==value)
-    res = query.all()
-    for i, point in enumerate(res):
-        msg = {'id' : point.id,
-               'iterative_phase_kwargs' : iterative_phase_kwargs,
-               'subpixel_template_kwargs' : subpixel_template_kwargs,
-               'threshold':threshold,
-               'cost_kwargs': cost_kwargs,
-               'walltime' : walltime}
-        rqueue.rpush(queuename, json.dumps(msg, cls=JsonEncoder))
-    session.close()
-
-    job_counter = i + 1
-
-    # Submit the jobs
-    submitter = Slurm('acn_subpixel',
-                 job_name='subpixel_register_points',
-                 mem_per_cpu=config['cluster']['processing_memory'],
-                 time=walltime,
-                 partition=config['cluster']['queue'],
-                 output=config['cluster']['cluster_log_dir']+f'/autocnet.subpixel_register-%j')
-    submitter.submit(array='1-{}%24'.format(job_counter), chunksize=chunksize, exclude=exclude)
-    return job_counter
-
-def cluster_subpixel_register_measures(iterative_phase_kwargs={'size': 251},
-                                     subpixel_template_kwargs={'image_size':(251,251)},
-                                     cost_kwargs={},
-                                     threshold=0.005,
-                                     filters={},
-                                     walltime='00:10:00',
-                                     chunksize=1000,
-                                     exclude=None):
-    # Setup the redis queue
-    rqueue = StrictRedis(host=config['redis']['host'],
-                        port=config['redis']['port'],
-                        db=0)
-
-    # Push the job messages onto the queue
-    queuename = config['redis']['processing_queue']
-
-    session = Session()
-    query = session.query(Measures)
-    for attr, value in filters.items():
-        query = query.filter(getattr(Measures, attr)==value)
-    res = query.all()
-    for i, measure in enumerate(res):
-        msg = {'id' : measure.id,
-               'iterative_phase_kwargs' : iterative_phase_kwargs,
-               'subpixel_template_kwargs' : subpixel_template_kwargs,
-               'threshold':threshold,
-               'cost_kwargs': cost_kwargs,
-               'walltime' : walltime}
-        rqueue.rpush(queuename, json.dumps(msg, cls=JsonEncoder))
-    session.close()
-
-    job_counter = i + 1
-
-    # Submit the jobs
-    submitter = Slurm('acn_subpixel_measure',
-                 job_name='subpixel_register_measure',
-                 mem_per_cpu=config['cluster']['processing_memory'],
-                 time=walltime,
-                 partition=config['cluster']['queue'],
-                 output=config['cluster']['cluster_log_dir']+f'/autocnet.subpixel_register-%j')
-    submitter.submit(array='1-{}'.format(job_counter), chunksize=chunksize, exclude=exclude)
-    return job_counter
-
-
 

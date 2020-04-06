@@ -44,11 +44,8 @@ from shapely import wkt
 from shapely.geometry.multipolygon import MultiPolygon
 from shapely.geometry import Point
 
-from redis import StrictRedis
-
 from plurmy import Slurm
 
-from autocnet import config, dem, engine, Session
 from autocnet.io.db.model import Images, Points, Measures, JsonEncoder
 from autocnet.cg.cg import distribute_points_in_geom
 from autocnet.io.db.connection import new_connection
@@ -56,10 +53,11 @@ from autocnet.spatial import isis
 from autocnet.transformation.spatial import reproject
 from autocnet.matcher.cpu_extractor import extract_most_interesting
 from autocnet.transformation import roi
+from autocnet.matcher.subpixel import geom_match
 
 import warnings
 
-def generate_ground_points(ground_mosaic, nspts_func=lambda x: int(round(x,1)*1), ewpts_func=lambda x: int(round(x,1)*4)):
+def generate_ground_points(Session, ground_mosaic, nspts_func=lambda x: int(round(x,1)*1), ewpts_func=lambda x: int(round(x,1)*4)):
     """
 
     Parameters
@@ -144,10 +142,20 @@ def generate_ground_points(ground_mosaic, nspts_func=lambda x: int(round(x,1)*1)
     return ground_cnet, fp_poly, coord_list
 
 
-def propagate_point(lon, lat, pointid, paths, lines, samples, verbose=False):
+def propagate_point(Session, 
+                    config, 
+                    dem,
+                    lon, 
+                    lat, 
+                    pointid, 
+                    paths, 
+                    lines, 
+                    samples, 
+                    verbose=False):
     """
 
     """
+    engine = Session.get_bind()
     images = gpd.GeoDataFrame.from_postgis(f"select * from images where ST_Intersects(geom, ST_SetSRID(ST_Point({lon}, {lat}), {config['spatial']['latitudinal_srid']}))", engine, geom_col="geom")
 
     image_measures = pd.DataFrame(zip(paths, lines, samples), columns=["path", "line", "sample"])
@@ -201,11 +209,8 @@ def propagate_point(lon, lat, pointid, paths, lines, samples, verbose=False):
         if best_results[3] == None or best_results[3] < 0.7:
             continue
 
-        if dem is None:
-            height = 0
-        else:
-            px, py = dem.latlon_to_pixel(lat, lon)
-            height = dem.read_array(1, [px, py, 1, 1])[0][0]
+        px, py = dem.latlon_to_pixel(lat, lon)
+        height = dem.read_array(1, [px, py, 1, 1])[0][0]
 
         semi_major = config['spatial']['semimajor_rad']
         semi_minor = config['spatial']['semiminor_rad']
@@ -226,48 +231,7 @@ def propagate_point(lon, lat, pointid, paths, lines, samples, verbose=False):
 
     return new_measures
 
-def cluster_propagate_control_network(base_cnet, walltime='00:20:00', chunksize=1000, exclude=None):
-    warnings.warn('This function is not well tested. No tests currently exists \
-    in the test suite for this version of the function.')
-
-    # Setup the redis queue
-    rqueue = StrictRedis(host=config['redis']['host'],
-                         port=config['redis']['port'],
-                         db=0)
-
-    # Push the job messages onto the queue
-    queuename = config['redis']['processing_queue']
-
-    groups = base_cnet.groupby('pointid').groups
-    for cpoint, indices in groups.items():
-        measures = base_cnet.loc[indices]
-        measure = measures.iloc[0]
-
-        p = measure.point
-
-        # get image in the destination that overlap
-        lon, lat = measures["point"].iloc[0].xy
-        msg = {'lon' : lon[0],
-               'lat' : lat[0],
-               'pointid' : cpoint,
-               'paths' : measures['path'].tolist(),
-               'lines' : measures['line'].tolist(),
-               'samples' : measures['sample'].tolist(),
-               'walltime' : walltime}
-        rqueue.rpush(queuename, json.dumps(msg, cls=JsonEncoder))
-
-    # Submit the jobs
-    submitter = Slurm('acn_propagate',
-                 job_name='cross_instrument_matcher',
-                 mem_per_cpu=config['cluster']['processing_memory'],
-                 time=walltime,
-                 partition=config['cluster']['queue'],
-                 output=config['cluster']['cluster_log_dir']+'/autocnet.cim-%j')
-    job_counter = len(groups.items())
-    submitter.submit(array='1-{}'.format(job_counter))
-    return job_counter
-
-def propagate_control_network(base_cnet, verbose=False):
+def propagate_control_network(Session, config, dem, base_cnet, verbose=False):
     """
 
     """
@@ -288,7 +252,17 @@ def propagate_control_network(base_cnet, verbose=False):
 
         # get image in the destination that overlap
         lon, lat = measures["point"].iloc[0].xy
-        gp_measures = propagate_point(lon[0], lat[0], cpoint, measures["path"], measures["line"], measures["sample"], verbose=verbose)
+        gp_measures = propagate_point(Session,
+                                      config, 
+                                      dem, 
+                                      lon[0], 
+                                      lat[0], 
+                                      cpoint, 
+                                      measures["path"], 
+                                      measures["line"], 
+                                      measures["sample"], 
+                                      verbose=verbose)
+
         constrained_net.extend(gp_measures)
 
     ground = gpd.GeoDataFrame.from_dict(constrained_net).set_geometry('point_latlon')
