@@ -1487,7 +1487,7 @@ class NetworkCandidateGraph(CandidateGraph):
         session.close()
         return len(res)
 
-    def apply(self, function, on='edge', args=(), walltime='01:00:00', filters={}, **kwargs):
+    def apply(self, function, on='edge', args=(), walltime='01:00:00', chunksize=1000, filters={}, **kwargs):
         """
         A mirror of the apply function from the standard CandidateGraph object. This implementation
         dispatches the job to the cluster as an independent operation instead of applying an arbitrary function
@@ -1571,7 +1571,7 @@ class NetworkCandidateGraph(CandidateGraph):
                      time=walltime,
                      partition=self.config['cluster']['queue'],
                      output=self.config['cluster']['cluster_log_dir']+f'/autocnet.{function}-%j')
-        submitter.submit(array='1-{}'.format(job_counter))
+        submitter.submit(array='1-{}'.format(job_counter), chunksize=chunksize)
         return job_counter
 
     def generic_callback(self, msg):

@@ -23,12 +23,6 @@ except DistributionNotFound:
 else:
     __version__ = _dist.version
 
-# Defaults
-dem = None
-config = {}
-Session = None
-engine = None
-
 # Patch the candidate graph into the root namespace
 from autocnet.graph.network import CandidateGraph, NetworkCandidateGraph
 

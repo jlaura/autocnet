@@ -1,7 +1,5 @@
 from sqlalchemy.schema import DDL
 
-from autocnet import config
-
 valid_geom_function = DDL("""
 CREATE OR REPLACE FUNCTION validate_geom()
   RETURNS trigger AS
@@ -88,8 +86,3 @@ CREATE TRIGGER image_ignored
   FOR EACH ROW
 EXECUTE PROCEDURE ignore_image();
 """)
-
-try:
-  latitudinal_srid = config['spatial']['latitudinal_srid']
-except:
-  latitudinal_srid = None
