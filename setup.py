@@ -31,8 +31,7 @@ def setup_package():
         packages=find_packages(),
         include_package_data=True,
         package_data={'autocnet' : list(examples)},
-        scripts=['bin/acn_submit', 'bin/acn_overlaps', 'bin/acn_subpixel', 'bin/acn_load_images',
-                 'bin/acn_subpixel_measure'],
+        scripts=['bin/acn_submit'],
         zip_safe=False,
         install_requires=[],
         classifiers=[
