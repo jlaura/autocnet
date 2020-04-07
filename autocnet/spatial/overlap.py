@@ -77,7 +77,8 @@ def place_points_in_overlap(overlap,
                             cam_type="csm",
                             size=71,
                             distribute_points_kwargs={},
-                            ncg=None):
+                            ncg=None, 
+                            **kwargs):
     """
     Place points into an overlap geometry by back-projecing using sensor models.
     The DEM specified in the config file will be used to calculate point elevations.

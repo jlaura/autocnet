@@ -615,7 +615,8 @@ def subpixel_register_measure(measureid,
 def subpixel_register_point(pointid, iterative_phase_kwargs={}, 
                             subpixel_template_kwargs={},
                             cost_func=lambda x,y: 1/x**2 * y, threshold=0.005,
-                            Session=None):
+                            ncg=None,
+                            **kwargs):
 
     """
     Given some point, subpixel register all of the measures in the point to the
@@ -626,8 +627,8 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={},
     Session : obj
               An SQLAlchemy Session factory
 
-    pointid : int
-              The identifier of the point in the DB
+    pointid : int or obj
+              The identifier of the point in the DB or a Points object
 
     iterative_phase_kwargs : dict
                              Any keyword arguments passed to the phase matcher
@@ -645,8 +646,13 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={},
                 measures with a cost <= the threshold are marked as ignore=True in
                 the database.
     """
+    Session = ncg.Session
     if not Session:
         raise BrokenPipeError('This func requires a database session.')
+    
+    if isinstance(pointid, Points):
+        pointid = pointid.id
+    
     session = Session()
     measures = session.query(Measures).filter(Measures.pointid == pointid).order_by(Measures.id).all()
     source = measures[0]
@@ -654,13 +660,20 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={},
     sourceid = source.imageid
     res = session.query(Images).filter(Images.id == sourceid).one()
     source_node = NetworkNode(node_id=sourceid, image_path=res.path)
+    source_node.parent = ncg
 
+    print(f'Attempting to subpixel register {len(measures)} measures for point {pointid}')
+
+    resultlog = []
     for measure in measures[1:]:
+        currentlog = {'measureid':measure.id,
+                      'status':''}
         cost = None
         destinationid = measure.imageid
 
         res = session.query(Images).filter(Images.id == destinationid).one()
         destination_node = NetworkNode(node_id=destinationid, image_path=res.path)
+        destination_node.parent = ncg
 
         new_x, new_y, dist, template_metric,  _ = geom_match(source_node.geodata, destination_node.geodata,
                                                       source.sample, source.line,
@@ -669,27 +682,34 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={},
 
         if new_x == None or new_y == None:
             measure.ignore = True # Unable to phase match
+            currentlog['status'] = 'Failed to geom match.'
+            resultlog.append(currentlog)
             continue
 
         cost = cost_func(dist, template_metric)
 
         if cost <= threshold:
             measure.ignore = True # Threshold criteria not met
+            currentlog['status'] = f'Cost failed. Distance shifted: {dist}. Metric: {template_metric}.'
+            resultlog.append(currentlog)
             continue
 
         # Update the measure
-        if new_template_x:
-            measure.sample = new_x
-            measure.line = new_y
-            measure.weight = cost
+        measure.sample = new_x
+        measure.line = new_y
+        measure.weight = cost
 
         # In case this is a second run, set the ignore to False if this
         # measures passed. Also, set the source measure back to ignore=False
         measure.ignore = False
         source.ignore = False
+        currentlog['status'] = f'Success.'
+        resultlog.append(currentlog)
 
     session.commit()
     session.close()
+
+    return resultlog
 
 def subpixel_register_points(iterative_phase_kwargs={'size': 251},
                              subpixel_template_kwargs={'image_size':(251,251)},

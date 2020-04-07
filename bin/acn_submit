@@ -42,6 +42,7 @@ def _instantiate_obj(msg, ncg):
 def _instantiate_row(msg, ncg):
     objdict = {'measure' : Measures,
                'point' : Points,
+               'points' : Points,
                'overlap' : Overlay,
                'overlaps' : Overlay}
     rowid = msg['id']
@@ -75,6 +76,7 @@ def main(msg):
         # For now, pass all the potential config items through
         # most funcs will simply discard the unnecessary ones.
         msg['kwargs']['ncg'] = ncg
+        msg['kwargs']['Session'] = ncg.Session
 
     # Now run the function.
     res = func(*msg['args'], **msg['kwargs'])
