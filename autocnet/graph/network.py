@@ -1323,7 +1323,6 @@ class NetworkCandidateGraph(CandidateGraph):
         # if unpopulated.
         for i, d in self.nodes(data='data'):
             d.parent = self
-            d.popluate_db()
         for s, d, e in self.edges(data='data'):
             e.parent = self
 
@@ -1861,8 +1860,7 @@ WHERE
         obj._execute_sql(compute_overlaps_sql)
         return obj
 
-    @classmethod
-    def from_database(cls, query_string='SELECT * FROM public.images'):
+    def from_database(self, query_string='SELECT * FROM public.images'):
         """
         This is a constructor that takes the results from an arbitrary query string,
         uses those as a subquery into a standard polygon overlap query and
@@ -1901,23 +1899,21 @@ WHERE
         WHERE ST_INTERSECTS(i1.geom, i2.geom) = TRUE
         AND i1.id < i2.id'''.format(query_string)
 
-        session = Session()
-        res = session.execute(composite_query)
+        with self.session_scope() as session:
+            res = session.execute(composite_query)
 
-        adjacency = defaultdict(list)
-        adjacency_lookup = {}
-        for r in res:
-            sid, spath, did, dpath = r
+            adjacency = defaultdict(list)
+            adjacency_lookup = {}
+            for r in res:
+                sid, spath, did, dpath = r
 
-            adjacency_lookup[spath] = sid
-            adjacency_lookup[dpath] = did
-            if spath != dpath:
-                adjacency[spath].append(dpath)
-        session.close()
+                adjacency_lookup[spath] = sid
+                adjacency_lookup[dpath] = did
+                if spath != dpath:
+                    adjacency[spath].append(dpath)
+        
         # Add nodes that do not overlap any images
-        obj = cls(adjacency, node_id_map=adjacency_lookup, config=self.config)
-
-        return obj
+        self.__init__(adjacency, node_id_map=adjacency_lookup)
 
     @staticmethod
     def clear_db(tables=None):
@@ -2062,73 +2058,6 @@ WHERE
                      partition=self.config['cluster']['queue'],
                      output=self.config['cluster']['cluster_log_dir']+f'/autocnet.subpixel_register-%j')
         submitter.submit(array='1-{}'.format(job_counter), chunksize=chunksize, exclude=exclude)
-        return job_counter
-
-    def cluster_subpixel_register_points(self, iterative_phase_kwargs={'size': 251},
-                                         subpixel_template_kwargs={'image_size':(251,251)},
-                                         cost_kwargs={},
-                                         threshold=0.005,
-                                         filters={},
-                                         walltime='00:10:00',
-                                         chunksize=1000,
-                                         exclude=None):
-        """
-        Distributed subpixel registration of all of the points in a given DB table.
-
-
-        Parameters
-        ----------
-        pointid : int
-                  The identifier of the point in the DB
-
-        iterative_phase_kwargs : dict
-                                 Any keyword arguments passed to the phase matcher
-
-        subpixel_template_kwargs : dict
-                                   Ay keyword arguments passed to the template matcher
-
-        cost : func
-               A generic cost function accepting two arguments (x,y), where x is the
-               distance that a point has shifted from the original, sensor identified
-               intersection, and y is the correlation coefficient coming out of the
-               template matcher.
-
-        threshold : numeric
-                    measures with a cost <= the threshold are marked as ignore=True in
-                    the database.
-        filters : dict
-                  with keys equal to attributes of the Points mapping and values
-                  equal to some criteria.
-        exclude : str
-                  string containing the name(s) of any slurm nodes to exclude when
-                  completing a cluster job. (e.g.: 'gpu1' or 'gpu1,neb12')
-        """
-
-        session = self.Session()
-        query = session.query(Points)
-        for attr, value in filters.items():
-            query = query.filter(getattr(Points, attr)==value)
-        res = query.all()
-        for i, point in enumerate(res):
-            msg = {'id' : point.id,
-                   'iterative_phase_kwargs' : iterative_phase_kwargs,
-                   'subpixel_template_kwargs' : subpixel_template_kwargs,
-                   'threshold':threshold,
-                   'cost_kwargs': cost_kwargs,
-                   'walltime' : walltime}
-            self.redis_queue.rpush(self.processing_queue, json.dumps(msg, cls=JsonEncoder))
-        session.close()
-
-        job_counter = i + 1
-
-        # Submit the jobs
-        submitter = Slurm('acn_subpixel',
-                     job_name='subpixel_register_points',
-                     mem_per_cpu=self.config['cluster']['processing_memory'],
-                     time=walltime,
-                     partition=self.config['cluster']['queue'],
-                     output=self.config['cluster']['cluster_log_dir']+f'/autocnet.subpixel_register-%j')
-        submitter.submit(array='1-{}%24'.format(job_counter), chunksize=chunksize, exclude=exclude)
         return job_counter
 
     def cluster_propagate_control_network(self, 
