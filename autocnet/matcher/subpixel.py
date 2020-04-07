@@ -542,12 +542,15 @@ def geom_match(base_cube, input_cube, bcenter_x, bcenter_y, size_x=60, size_y=60
     return sample, line, dist, maxcorr, corrmap
 
 
-def subpixel_register_measure(Session, 
-                              measureid, 
+def subpixel_register_measure(measureid, 
                               iterative_phase_kwargs={}, 
                               subpixel_template_kwargs={},
-                              cost_func=lambda x,y: 1/x**2 * y, threshold=0.005):
+                              cost_func=lambda x,y: 1/x**2 * y, 
+                              threshold=0.005,
+                              Session=None):
 
+    if not Session:
+        raise BrokenPipeError('This func requires a database session.')
     session = Session()
 
     # Setup the measure that is going to be matched
@@ -609,10 +612,10 @@ def subpixel_register_measure(Session,
     session.close()
 
 
-def subpixel_register_point(Session,
-                            pointid, iterative_phase_kwargs={}, 
+def subpixel_register_point(pointid, iterative_phase_kwargs={}, 
                             subpixel_template_kwargs={},
-                            cost_func=lambda x,y: 1/x**2 * y, threshold=0.005):
+                            cost_func=lambda x,y: 1/x**2 * y, threshold=0.005,
+                            Session=None):
 
     """
     Given some point, subpixel register all of the measures in the point to the
@@ -642,6 +645,8 @@ def subpixel_register_point(Session,
                 measures with a cost <= the threshold are marked as ignore=True in
                 the database.
     """
+    if not Session:
+        raise BrokenPipeError('This func requires a database session.')
     session = Session()
     measures = session.query(Measures).filter(Measures.pointid == pointid).order_by(Measures.id).all()
     source = measures[0]
@@ -686,11 +691,11 @@ def subpixel_register_point(Session,
     session.commit()
     session.close()
 
-def subpixel_register_points(Session,
-                             iterative_phase_kwargs={'size': 251},
+def subpixel_register_points(iterative_phase_kwargs={'size': 251},
                              subpixel_template_kwargs={'image_size':(251,251)},
                              cost_kwargs={},
-                             threshold=0.005):
+                             threshold=0.005,
+                             Session=None):
     """
     Serial subpixel registration of all of the points in a given DB table.
 
@@ -718,6 +723,8 @@ def subpixel_register_points(Session,
                 measures with a cost <= the threshold are marked as ignore=True in
                 the database.
     """
+    if not Session:
+        raise BrokenPipeError('This func requires a database session.')
     session = Session()
     pointids = [point.id for point in session.query(Points)]
     session.close()

@@ -14,6 +14,7 @@ import pandas as pd
 import numpy as np
 from redis import StrictRedis
 
+from sqlalchemy.ext.declarative.api import DeclarativeMeta
 import shapely.affinity
 import shapely.geometry
 import shapely.wkt as swkt
@@ -29,6 +30,7 @@ from plio.io import io_controlnetwork as cnet
 
 from plurmy import Slurm
 
+import autocnet
 from autocnet.config_parser import parse_config
 from autocnet.cg import cg
 from autocnet.graph import markov_cluster
@@ -1338,8 +1340,22 @@ class NetworkCandidateGraph(CandidateGraph):
                    The path to the config file
         """
         # The YAML library will raise any parse errors
-        self.config = parse_config(filepath)
-        
+        self.config_from_dict(parse_config(filepath))
+
+    def config_from_dict(self, config_dict):
+        """
+        A NetworkCandidateGraph uses a database. This method loads a config
+        dict to set up the connection. Additionally, this loads planetary 
+        information and settings for other operations the candidate graph
+        can perform.
+
+        Parameters
+        ----------
+        filepath : str
+                   The path to the config file
+        """
+        self.config = config_dict
+
         # Setup REDIS
         self._setup_queues()
        
@@ -1351,6 +1367,8 @@ class NetworkCandidateGraph(CandidateGraph):
         # is the best solution I think. I don't want to pass the DEM around
         # for the sensor calls.
         self._setup_dem()
+
+    
 
     def _setup_dem(self):
         spatial = self.config['spatial']
@@ -1410,11 +1428,68 @@ class NetworkCandidateGraph(CandidateGraph):
         sql : str
               The SQL string to be passed to the DB engine and executed.
         """
-        conn = engine.connect()
+        conn = self.engine.connect()
         conn.execute(sql)
         conn.close()
+    
+    def _push_obj_message(self, onobj, function, walltime, args, kwargs):
+        """
+        Push messages to the redis queue for objects e.g., Nodes and Edges
+        """
+        for job_counter, elem in enumerate(onobj.data('data')):
+            if getattr(elem[-1], 'ignore', False):
+                continue
+            # Determine if we are working with an edge or a node
+            if len(elem) > 2:
+                id = (elem[2].source['node_id'],
+                    elem[2].destination['node_id'])
+                image_path = (elem[2].source['image_path'],
+                            elem[2].destination['image_path'])
+                along = 'edge'
+            else:
+                id = (elem[0])
+                image_path = elem[1]['image_path']
+                along = 'node'
 
-    def apply(self, function, on='edge', args=(), walltime='01:00:00', **kwargs):
+            msg = {'id':id,
+                   'along':along,
+                    'func':function,
+                    'args':args,
+                    'kwargs':kwargs,
+                    'walltime':walltime,
+                    'image_path':image_path,
+                    'param_step':1}
+
+            self.redis_queue.rpush(self.processing_queue, json.dumps(msg, cls=JsonEncoder))
+        return job_counter
+    
+    def _push_row_messages(self, query_obj, on, function, walltime, filters, args, kwargs):
+        session = self.Session()
+        query = session.query(query_obj)
+    
+        # Now apply any filters that might be passed in.
+        for attr, value in filters.items():
+            query = query.filter(getattr(query_obj, attr)==value)
+        
+        # Execute the query to get the rows to be processed
+        res = query.all()
+
+        if len(res) == 0:
+            raise ValueError('Query returned zero results.')
+        for row in res:
+            msg = {'along':on,
+                    'id':row.id,
+                    'func':function,
+                    'args':args, 
+                    'kwargs':kwargs,
+                    'walltime':walltime}
+            msg['config'] = self.config  # Hacky for now, just passs the whole config dict
+            self.redis_queue.rpush(self.processing_queue,
+                                json.dumps(msg, cls=JsonEncoder))
+        session.close()
+        return len(res)
+
+    def apply(self, function, on='edge', args=(), walltime='01:00:00', filters={}, **kwargs):
         """
         A mirror of the apply function from the standard CandidateGraph object. This implementation
         dispatches the job to the cluster as an independent operation instead of applying an arbitrary function
@@ -1432,6 +1507,8 @@ class NetworkCandidateGraph(CandidateGraph):
         on : str
              {'edge', 'edges', 'e', 0} for an edge
              {'node', 'nodes', 'n' 1} for a node
+             {'measures', 'measure', 'm', '2'} for measures
+             {'points', 'point', 'p', '3'} for points
 
         args : tuple
                Of additional arguments to pass to the apply function
@@ -1448,46 +1525,50 @@ class NetworkCandidateGraph(CandidateGraph):
             'node' : self.nodes,
             'nodes' : self.nodes,
             'n' : self.nodes,
-            1 : self.nodes
+            1 : self.nodes,
+            'measures' : Measures,
+            'measure' : Measures,
+            'm' : Measures,
+            2 : Measures,
+            'points' : Points,
+            'point' : Points,
+            'p' : Points,
+            3 : Points,
+            'overlaps': Overlay,
+            'overlap' : Overlay,
+            'o' :Overlay,
+            4: Overlay
         }
 
         # Determine which obj will be called
         onobj = options[on]
-
         res = []
 
         if not isinstance(function, (str, bytes)):
             raise TypeError('Function argument must be a string or bytes object.')
-
-        for job_counter, elem in enumerate(onobj.data('data')):
-            if getattr(elem[-1], 'ignore', False):
-                continue
-            # Determine if we are working with an edge or a node
-            if len(elem) > 2:
-                id = (elem[2].source['node_id'],
-                      elem[2].destination['node_id'])
-                image_path = (elem[2].source['image_path'],
-                              elem[2].destination['image_path'])
-            else:
-                id = (elem[0])
-                image_path = elem[1]['image_path']
-
-            msg = {'id':id,
-                    'func':function,
-                    'args':args,
-                    'kwargs':kwargs,
-                    'walltime':walltime,
-                    'image_path':image_path,
-                    'param_step':1}
-
-            self.redis_queue.rpush(self.processing_queue, json.dumps(msg, cls=JsonEncoder))
-
-        # SLURM is 1 based, while enumerate is 0 based
-        job_counter += 1
+        if isinstance(onobj, (Node, Edge, NetworkNode, NetworkEdge)):
+            job_counter = self._push_obj_messages(onobj, function, walltime, args, kwargs)
+        elif isinstance(onobj, DeclarativeMeta):
+            job_counter = self._push_row_messages(onobj, on, function, walltime, filters, args, kwargs)
 
         # Submit the jobs
-        submitter = Slurm('acn_submit',
-                     job_name=function,
+        rconf = self.config['redis']
+        rhost = rconf['host']
+        rport = rconf['port']
+        processing_queue = rconf['processing_queue']
+        
+        env = self.config['env']
+        condaenv = env['conda']
+        isisroot = env['ISISROOT']
+        isisdata = env['ISISDATA']
+        
+        isissetup = f'export ISISROOT={isisroot} && export ISIS3DATA={isisdata}'
+        condasetup = f'conda activate {condaenv}'
+        job = f'acn_submit -r={rhost} -p={rport} {processing_queue}'
+        command = f'{condasetup} && {isissetup} && {job}'
+        
+        submitter = Slurm(command,
+                     job_name='AutoCNet',
                      mem_per_cpu=self.config['cluster']['processing_memory'],
                      time=walltime,
                      partition=self.config['cluster']['queue'],
@@ -1565,7 +1646,7 @@ WHERE
 
         """
 
-        df = pd.read_sql(sql, engine)
+        df = pd.read_sql(sql, self.engine)
 
         #create columns in the dataframe; zeros ensure plio (/protobuf) will
         #ignore unless populated with alternate values
@@ -1622,7 +1703,7 @@ WHERE
         data_to_update['id'] = data_to_update['id'].apply(lambda row : int(row))
 
         # Generate a temp table, update the real table, then drop the temp table
-        data_to_update.to_sql('temp_measures', engine, if_exists='replace', index_label='serialnumber', index = False)
+        data_to_update.to_sql('temp_measures', self.engine, if_exists='replace', index_label='serialnumber', index = False)
 
         sql = """
         UPDATE measures AS f
@@ -1857,7 +1938,7 @@ WHERE
             if isinstance(tables, str):
                 tables = [tables]
         else:
-            tables = engine.table_names()
+            tables = self.engine.table_names()
 
         for t in tables:
           if t != 'spatial_ref_sys':
@@ -1927,7 +2008,7 @@ WHERE
 
     @property
     def measures(self):
-        df = pd.read_sql_table('measures', con=engine)
+        df = pd.read_sql_table('measures', con=self.engine)
         return df
 
     @property
@@ -1938,11 +2019,10 @@ WHERE
         called on next cluster job launch, causing failures. This method provides
         a quick check for left over jobs.
         """
-        llen = self.redis_queue.llen(conf['processing_queue'])
+        llen = self.redis_queue.llen(self.config['redis']['processing_queue'])
         return llen
 
-    @staticmethod
-    def queue_flushdb():
+    def queue_flushdb(self):
         """
         Clear the processing queue of any left over jobs from a previous cluster
         job cancellation or hanging jobs.
@@ -1970,7 +2050,8 @@ WHERE
                    'threshold':threshold,
                    'cost_kwargs': cost_kwargs,
                    'walltime' : walltime}
-            self.redis_queue.rpush(self.processing_queue, json.dumps(msg, cls=JsonEncoder))
+            self.redis_queue.rpush(self.processing_queue, 
+            json.dumps(msg, cls=JsonEncoder))
         session.close()
 
         job_counter = i + 1

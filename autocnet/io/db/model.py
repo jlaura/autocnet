@@ -257,6 +257,7 @@ class Overlay(BaseMixin, Base):
                 filter(sqlalchemy.func.array_length(cls.intersections, 1) > 1)
         session.close()
         return res
+        
 
 class PointType(enum.IntEnum):
     """
@@ -270,6 +271,9 @@ class Points(BaseMixin, Base):
     __tablename__ = 'points'
     latitudinal_srid = -1
     rectangular_srid = -1
+    semimajor_rad = 1
+    semiminor_rad = 1
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     _pointtype = Column("pointType", IntEnum(PointType), nullable=False)  # 2, 3, 4 - Could be an enum in the future, map str to int in a decorator
     identifier = Column(String, unique=True)
@@ -302,7 +306,7 @@ class Points(BaseMixin, Base):
     @apriori.setter
     def apriori(self, apriori):
         if apriori:
-            self._apriori = from_shape(apriori, srid=rectangular_srid)
+            self._apriori = from_shape(apriori, srid=self.rectangular_srid)
         else:
             self._apriori = apriori
 
@@ -316,11 +320,11 @@ class Points(BaseMixin, Base):
     @adjusted.setter
     def adjusted(self, adjusted):
         if adjusted:
-            self._adjusted = from_shape(adjusted, srid=rectangular_srid)
+            self._adjusted = from_shape(adjusted, srid=self.rectangular_srid)
             lat, lon, _ = reproject([adjusted.x, adjusted.y, adjusted.z],
-                                    spatial['semimajor_rad'], spatial['semiminor_rad'],
+                                    self.semimajor_rad, self.semiminor_rad,
                                     'geocent', 'latlon')
-            self._geom = from_shape(Point(lat, lon), latitudinal_srid)
+            self._geom = from_shape(Point(lat, lon), self.latitudinal_srid)
         else:
             self._adjusted = adjusted
             self._geom = None
@@ -334,6 +338,9 @@ class Points(BaseMixin, Base):
         if isinstance(v, int):
             v = PointType(v)
         self._pointtype = v
+    
+    #def subpixel_register(self, Session, pointid, **kwargs):
+    #    subpixel.subpixel_register_point(args=(Session, pointid), **kwargs)
 
 class MeasureType(enum.IntEnum):
     """
@@ -394,10 +401,13 @@ def try_db_creation(engine, config):
     Base.metadata.bind = engine
     
     # Set the class attributes for the SRIDs
-    latitudinal_srid = config['spatial']['latitudinal_srid']
-    rectangular_srid = config['spatial']['rectangular_srid']
+    spatial = config['spatial']
+    latitudinal_srid = spatial['latitudinal_srid']
+    rectangular_srid = spatial['rectangular_srid']
 
     Points.rectangular_srid = rectangular_srid
+    Points.semimajor_rad = spatial['semimajor_rad']
+    Points.semiminor_rad = spatial['semiminor_rad']
     for cls in [Points, Overlay, Images, Keypoints, Matches]:
         setattr(cls, 'latitudinal_srid', latitudinal_srid)
         

@@ -8,8 +8,8 @@ import shapely
 import sqlalchemy
 from plio.io.io_gdal import GeoDataset
 
-from autocnet import config, dem, Session
 from autocnet.cg import cg as compgeom
+from autocnet.graph.node import NetworkNode
 from autocnet.io.db.model import Images, Measures, Overlay, Points, JsonEncoder
 from autocnet.spatial import isis
 from autocnet.matcher.cpu_extractor import extract_most_interesting
@@ -41,13 +41,13 @@ INSERT INTO overlay(intersections, geom) SELECT row.intersections, row.geom FROM
   FROM iid GROUP BY iid.geom) AS row WHERE array_length(intersections, 1) > 1;
 """
 
-def place_points_in_overlaps(Session, 
-                             config,
-                             dem, 
-                             nodes,
-                             size_threshold=0.0007,
+def place_points_in_overlaps(size_threshold=0.0007,
                              distribute_points_kwargs={}, 
-                             cam_type='csm'):
+                             cam_type='csm', 
+                             Session=None,
+                             config=None,
+                             dem=None, 
+                             ncg=None):
     """
     Place points in all of the overlap geometries by back-projecing using
     sensor models.
@@ -66,30 +66,27 @@ def place_points_in_overlaps(Session,
     size_threshold : float
                      overlaps with area <= this threshold are ignored
     """
-    points = []
-    for o in Overlay.overlapping_larger_than(size_threshold, Session):
-        overlaps = o.intersections
-        if overlaps == None:
+
+    
+    for overlap in Overlay.overlapping_larger_than(size_threshold, Session):
+        if overlap.intersections == None:
             continue
-
-        overlapnodes = [nodes[id]["data"] for id in overlaps]
-        points.extend(place_points_in_overlap(Session, 
-                                              config,
-                                              dem, 
-                                              overlapnodes, 
-                                              o.geom, 
-                                              cam_type=cam_type,
-                                              distribute_points_kwargs=distribute_points_kwargs))
-    Points.bulkadd(points, Session)
-
-def place_points_in_overlap(Session,
-                            config,
-                            dem,
-                            nodes, 
-                            geom, 
+        place_points_in_overlap(overlap, 
+                                cam_type=cam_type,
+                                distribute_points_kwargs=distribute_points_kwargs,
+                                Session=Session,
+                                config=config,
+                                dem=dem, 
+                                ncg=ncg)
+    
+def place_points_in_overlap(overlap,  
                             cam_type="csm",
                             size=71,
-                            distribute_points_kwargs={}):
+                            distribute_points_kwargs={},
+                            Session=None,
+                            config=None,
+                            dem=None,
+                            ncg=None):
     """
     Place points into an overlap geometry by back-projecing using sensor models.
     The DEM specified in the config file will be used to calculate point elevations.
@@ -115,6 +112,8 @@ def place_points_in_overlap(Session,
     points : list of Points
         The list of points seeded in the overlap
     """
+
+    # Determine what sensor type to use
     avail_cams = {"isis", "csm"}
     cam_type = cam_type.lower()
     if cam_type not in cam_type:
@@ -124,10 +123,22 @@ def place_points_in_overlap(Session,
     semi_major = config['spatial']['semimajor_rad']
     semi_minor = config['spatial']['semiminor_rad']
 
+    # Determine the point distribution in the overlap geom
+    geom = overlap.geom
     valid = compgeom.distribute_points_in_geom(geom, **distribute_points_kwargs)
     if not valid:
         warnings.warn('Failed to distribute points in overlap')
         return []
+
+    # Setup the node objects that are covered by the geom
+    nodes = []
+    session = Session()
+    for id in overlap.intersections:
+        res = session.query(Images).filter(Images.id == id).one()
+        nn = NetworkNode(node_id=id, image_path=res.path)
+        nn.parent = ncg
+        nodes.append(nn)
+    session.close()
 
     for v in valid:
         lon = v[0]
@@ -238,4 +249,5 @@ def place_points_in_overlap(Session,
 
         if len(point.measures) >= 2:
             points.append(point)
-    return points
+    Points.bulkadd(points, Session)
+    

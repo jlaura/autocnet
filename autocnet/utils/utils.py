@@ -1,3 +1,4 @@
+import importlib
 import itertools
 import json
 
@@ -564,3 +565,30 @@ def bytescale(data, cmin=None, cmax=None, high=255, low=0):
     scale = float(high - low) / cscale
     bytedata = (data - cmin) * scale + low
     return (bytedata.clip(low, high) + 0.5).astype(np.uint8)
+
+def import_func(func):
+    """
+    Imports a function from the autocnet package.
+
+    Parameters
+    ----------
+    func : str
+           import path. For example, to import the place_points_in_overlap function,
+           this func can be called with: 'spatial.overlap.place_points_in_overlap'
+
+    Returns
+    -------
+    func : obj
+           The function object for use.
+    """
+    if not func[0] == '.':
+        # Since this intentionally forces the package to be autocnet
+        # need the import path relative to the package name. Convenience
+        # for the caller to add the '.' so they don't get a cryptic
+        # ModuleImportError.
+        func = f'.{func}'
+
+    module, func = func.rsplit('.', 1)
+    module = importlib.import_module(module, package='autocnet')
+    func = getattr(module, func)
+    return func
