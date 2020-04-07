@@ -34,9 +34,10 @@ def new_connection(dbconfig):
                                                   dbconfig['host'],
                                                   dbconfig['pgbouncer_port'],
                                                   dbconfig['name'])
+    hostname = socket.gethostname()
     engine = sqlalchemy.create_engine(db_uri,
-                poolclass=sqlalchemy.pool.NullPool,
-                connect_args={f"application_name":"AutoCNet_{socket.gethostname()}"},
+                #poolclass=sqlalchemy.pool.NullPool,
+                connect_args={"application_name":f"AutoCNet_{hostname}"},
                 isolation_level="AUTOCOMMIT")
     Session = orm.sessionmaker(bind=engine, autocommit=False)
     return Session, engine

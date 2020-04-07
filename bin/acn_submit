@@ -70,13 +70,12 @@ def main(msg):
         func = getattr(obj, msg['func'])
     else:
         func = import_func(msg['func'])
+        # Get the object begin processed prepended into the args.
+        msg['args'] = (obj, *msg['args'])
         # For now, pass all the potential config items through
         # most funcs will simply discard the unnecessary ones.
-        msg['kwargs']['Session'] = ncg.Session
-        msg['kwargs']['dem'] = ncg.dem
-        msg['kwargs']['config'] = ncg.config
         msg['kwargs']['ncg'] = ncg
-    
+
     # Now run the function.
     res = func(*msg['args'], **msg['kwargs'])
 

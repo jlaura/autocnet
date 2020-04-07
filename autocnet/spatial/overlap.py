@@ -44,9 +44,6 @@ INSERT INTO overlay(intersections, geom) SELECT row.intersections, row.geom FROM
 def place_points_in_overlaps(size_threshold=0.0007,
                              distribute_points_kwargs={}, 
                              cam_type='csm', 
-                             Session=None,
-                             config=None,
-                             dem=None, 
                              ncg=None):
     """
     Place points in all of the overlap geometries by back-projecing using
@@ -68,24 +65,18 @@ def place_points_in_overlaps(size_threshold=0.0007,
     """
 
     
-    for overlap in Overlay.overlapping_larger_than(size_threshold, Session):
+    for overlap in Overlay.overlapping_larger_than(size_threshold, ncg.Session):
         if overlap.intersections == None:
             continue
         place_points_in_overlap(overlap, 
                                 cam_type=cam_type,
                                 distribute_points_kwargs=distribute_points_kwargs,
-                                Session=Session,
-                                config=config,
-                                dem=dem, 
                                 ncg=ncg)
     
 def place_points_in_overlap(overlap,  
                             cam_type="csm",
                             size=71,
                             distribute_points_kwargs={},
-                            Session=None,
-                            config=None,
-                            dem=None,
                             ncg=None):
     """
     Place points into an overlap geometry by back-projecing using sensor models.
@@ -120,8 +111,8 @@ def place_points_in_overlap(overlap,
         raise Exception(f'{cam_type} is not one of valid camera: {avail_cams}')
 
     points = []
-    semi_major = config['spatial']['semimajor_rad']
-    semi_minor = config['spatial']['semiminor_rad']
+    semi_major = ncg.config['spatial']['semimajor_rad']
+    semi_minor = ncg.config['spatial']['semiminor_rad']
 
     # Determine the point distribution in the overlap geom
     geom = overlap.geom
@@ -132,22 +123,22 @@ def place_points_in_overlap(overlap,
 
     # Setup the node objects that are covered by the geom
     nodes = []
-    session = Session()
-    for id in overlap.intersections:
-        res = session.query(Images).filter(Images.id == id).one()
-        nn = NetworkNode(node_id=id, image_path=res.path)
-        nn.parent = ncg
-        nodes.append(nn)
-    session.close()
-
+    with ncg.session_scope() as session:
+        for id in overlap.intersections:
+            res = session.query(Images).filter(Images.id == id).one()
+            nn = NetworkNode(node_id=id, image_path=res.path)
+            nn.parent = ncg
+            nodes.append(nn)
+    
+    print(f'Have {len(valid)} potential points to place.')
     for v in valid:
         lon = v[0]
         lat = v[1]
 
         # Calculate the height, the distance (in meters) above or
         # below the aeroid (meters above or below the BCBF spheroid).
-        px, py = dem.latlon_to_pixel(lat, lon)
-        height = dem.read_array(1, [px, py, 1, 1])[0][0]
+        px, py = ncg.dem.latlon_to_pixel(lat, lon)
+        height = ncg.dem.read_array(1, [px, py, 1, 1])[0][0]
 
         # Need to get the first node and then convert from lat/lon to image space
         node = nodes[0]
@@ -200,12 +191,8 @@ def place_points_in_overlap(overlap,
             updated_lon, updated_lat, _ = reproject([pcoord.x, pcoord.y, pcoord.z],
                                                     semi_major, semi_minor, 'geocent', 'latlon')
 
-            # Get the new DEM height
-            if dem is None:
-                updated_height = 0
-            else:
-                px, py = dem.latlon_to_pixel(updated_lat, updated_lon)
-                updated_height = dem.read_array(1, [px, py, 1, 1])[0][0]
+            px, py = ncg.dem.latlon_to_pixel(updated_lat, updated_lon)
+            updated_height = ncg.dem.read_array(1, [px, py, 1, 1])[0][0]
 
 
             # Get the BCEF coordinate from the lon, lat
@@ -249,5 +236,6 @@ def place_points_in_overlap(overlap,
 
         if len(point.measures) >= 2:
             points.append(point)
-    Points.bulkadd(points, Session)
+    print(f'Able to place {len(points)} points.')
+    Points.bulkadd(points, ncg.Session)
     

@@ -1368,8 +1368,6 @@ class NetworkCandidateGraph(CandidateGraph):
         # for the sensor calls.
         self._setup_dem()
 
-    
-
     def _setup_dem(self):
         spatial = self.config['spatial']
         self.dem = GeoDataset(spatial.get('dem', None))
@@ -2130,57 +2128,6 @@ WHERE
                      time=walltime,
                      partition=self.config['cluster']['queue'],
                      output=self.config['cluster']['cluster_log_dir']+f'/autocnet.subpixel_register-%j')
-        submitter.submit(array='1-{}%24'.format(job_counter), chunksize=chunksize, exclude=exclude)
-        return job_counter
-
-    def cluster_place_points_in_overlaps(self, size_threshold=0.0007,
-                                     distribute_points_kwargs={},
-                                     walltime='00:10:00',
-                                     chunksize=1000,
-                                     exclude=None,
-                                     cam_type="csm",
-                                     query_string='SELECT overlay.id FROM overlay LEFT JOIN points ON ST_INTERSECTS(overlay.geom, points.geom) WHERE points.id IS NULL AND ST_AREA(overlay.geom) >= {};'):
-        """
-        Place points in all of the overlap geometries by back-projecing using
-        sensor models. This method uses the cluster to process all of the overlaps
-        in parallel. See place_points_in_overlap and acn_overlaps.
-
-        Parameters
-        ----------
-        size_threshold : float
-            overlaps with area <= this threshold are ignored
-
-        walltime : str
-            Cluster job wall time as a string HH:MM:SS
-
-        cam_type : str
-                   options: {"csm", "isis"}
-                   Pick what kind of camera model implementation to use
-
-        query : str
-
-        exclude : str
-                  string containing the name(s) of any slurm nodes to exclude when
-                  completing a cluster job. (e.g.: 'gpu1' or 'gpu1,neb12')
-        """
-        # Push the job messages onto the queue
-        session = self.Session()
-        ids = [i[0] for i in session.execute(query_string.format(size_threshold))]
-        session.close()
-        for i, id in enumerate(ids):
-            msg = {'id' : id,
-                   'distribute_points_kwargs' : distribute_points_kwargs,
-                   'walltime' : walltime,
-                   'cam_type': cam_type}
-            self.redis_queue.rpush(self.processing_queue, json.dumps(msg, cls=JsonEncoder))
-        # Submit the jobs
-        submitter = Slurm('acn_overlaps',
-                     job_name='place_points',
-                     mem_per_cpu=self.config['cluster']['processing_memory'],
-                     time=walltime,
-                     partition=self.config['cluster']['queue'],
-                     output=self.config['cluster']['cluster_log_dir']+'/autocnet.place_points-%j')
-        job_counter = i+1
         submitter.submit(array='1-{}%24'.format(job_counter), chunksize=chunksize, exclude=exclude)
         return job_counter
 
