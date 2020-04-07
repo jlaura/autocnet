@@ -547,69 +547,78 @@ def subpixel_register_measure(measureid,
                               subpixel_template_kwargs={},
                               cost_func=lambda x,y: 1/x**2 * y, 
                               threshold=0.005,
-                              Session=None):
+                              ncg=None, 
+                              **kwargs):
 
-    if not Session:
-        raise BrokenPipeError('This func requires a database session.')
-    session = Session()
+    
+    
+    if isinstance(measureid, Measures):
+        measureid = measureid.id
 
-    # Setup the measure that is going to be matched
-    destination = session.query(Measures).filter(Measures.id == measureid).one()
-    destinationid = destination.imageid
-    res = session.query(Images).filter(Images.id == destinationid).one()
-    destination_node = NetworkNode(node_id=destinationid, image_path=res.path)
+    result = {'measureid':measureid,
+              'status':''}
 
-    # Get the point id and set up the reference measure
-    pointid = destination.pointid
-    source = session.query(Measures).filter(Measures.pointid==pointid).order_by(Measures.id).first()
-    source.weight = 1
+    with ncg.session_scope() as session:
+        # Setup the measure that is going to be matched
+        destination = session.query(Measures).filter(Measures.id == measureid).one()
+        destinationid = destination.imageid
+        res = session.query(Images).filter(Images.id == destinationid).one()
+        destination_node = NetworkNode(node_id=destinationid, image_path=res.path)
 
-    sourceid = source.imageid
-    res = session.query(Images).filter(Images.id == sourceid).one()
-    source_node = NetworkNode(node_id=sourceid, image_path=res.path)
+        # Get the point id and set up the reference measure
+        pointid = destination.pointid
+        source = session.query(Measures).filter(Measures.pointid==pointid).order_by(Measures.id).first()
+        source.weight = 1
 
-    new_template_x, new_template_y, template_metric, _ = subpixel_template(source.sample,
-                                                            source.line,
-                                                            destination.sample,
-                                                            destination.line,
-                                                            source_node.geodata,
-                                                            destination_node.geodata,
-                                                            **subpixel_template_kwargs)
-    if new_template_x == None:
-        destination.ignore = True # Unable to template match
-        return
+        sourceid = source.imageid
+        res = session.query(Images).filter(Images.id == sourceid).one()
+        source_node = NetworkNode(node_id=sourceid, image_path=res.path)
 
-    new_phase_x, new_phase_y, phase_metrics = iterative_phase(source.sample,
+        new_template_x, new_template_y, template_metric, _ = subpixel_template(source.sample,
                                                                 source.line,
-                                                                new_template_x,
-                                                                new_template_y,
+                                                                destination.sample,
+                                                                destination.line,
                                                                 source_node.geodata,
                                                                 destination_node.geodata,
-                                                                **iterative_phase_kwargs)
-    if new_phase_x == None:
-        destination.ignore = True # Unable to phase match
-        return
+                                                                **subpixel_template_kwargs)
+        if new_template_x == None:
+            destination.ignore = True # Unable to template match
+            result['status'] = 'Unable to template match.'
+            return result
 
-    dist = np.linalg.norm([new_phase_x-new_template_x, new_phase_y-new_template_y])
-    cost = cost_func(dist, template_metric)
+        new_phase_x, new_phase_y, phase_metrics = iterative_phase(source.sample,
+                                                                    source.line,
+                                                                    new_template_x,
+                                                                    new_template_y,
+                                                                    source_node.geodata,
+                                                                    destination_node.geodata,
+                                                                    **iterative_phase_kwargs)
+        if new_phase_x == None:
+            destination.ignore = True # Unable to phase match
+            result['status'] = 'Unable to phase match.'
+            return result
 
-    if cost <= threshold:
-        destination.ignore = True # Threshold criteria not met
-        return
+        dist = np.linalg.norm([new_phase_x-new_template_x, new_phase_y-new_template_y])
+        cost = cost_func(dist, template_metric)
 
-    # Update the measure
-    if new_phase_x:
-        destination.sample = new_phase_x
-        destination.line = new_phase_y
-        destination.weight = cost
+        if cost <= threshold:
+            destination.ignore = True # Threshold criteria not met
+            result['status'] = 'Cost metric not met.'
+            return result
 
-    # In case this is a second run, set the ignore to False if this
-    # measures passed. Also, set the source measure back to ignore=False
-    destination.ignore = False
-    source.ignore = False
+        # Update the measure
+        if new_phase_x:
+            destination.sample = new_phase_x
+            destination.line = new_phase_y
+            destination.weight = cost
 
-    session.commit()
-    session.close()
+        # In case this is a second run, set the ignore to False if this
+        # measures passed. Also, set the source measure back to ignore=False
+        destination.ignore = False
+        source.ignore = False
+        result['status'] = 'Success.'
+
+    return result
 
 
 def subpixel_register_point(pointid, iterative_phase_kwargs={}, 

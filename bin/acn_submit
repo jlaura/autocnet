@@ -41,6 +41,7 @@ def _instantiate_obj(msg, ncg):
 
 def _instantiate_row(msg, ncg):
     objdict = {'measure' : Measures,
+               'measures' : Measures,
                'point' : Points,
                'points' : Points,
                'overlap' : Overlay,
