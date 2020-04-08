@@ -1775,22 +1775,20 @@ WHERE
         if not os.path.exists(newdir):
             os.makedirs(newdir)
 
-        session = Session()
-        images = session.query(Images).all()
-        oldnew = []
-        for obj in images:
-            oldpath = obj.path
-            filename = os.path.basename(oldpath)
-            obj.path = os.path.join(newdir, filename)
-            oldnew.append((oldpath, obj.path))
-        session.commit()
-        session.close()
+        with self.session_scope() as session:
+            images = session.query(Images).all()
+            oldnew = []
+            for obj in images:
+                oldpath = obj.path
+                filename = os.path.basename(oldpath)
+                obj.path = os.path.join(newdir, filename)
+                oldnew.append((oldpath, obj.path))
 
         # Copy the files
         [copyfile(old, new) for old, new in oldnew]
 
-    @classmethod
-    def from_remote_database(cls, source_db_config, path,  query_string='SELECT * FROM public.images LIMIT 10'):
+    
+    def add_from_remote_database(self, source_db_config, path,  query_string='SELECT * FROM public.images LIMIT 10'):
         """
         This is a constructor that takes an existing database containing images and sensors,
         copies the selected rows into the project specified in the autocnet_config variable,
@@ -1828,16 +1826,18 @@ WHERE
 
         Example
         -------
+        >>> ncg = NetworkCandidateGraph()
+        >>> ncg.config_from_dict(new_config)
         >>> source_db_config = {'username':'jay',
         'password':'abcde',
         'host':'autocnet.wr.usgs.gov',
         'pgbouncer_port':5432,
-        'name':'ctx'}
-        >>> geom = 'LINESTRING(145 10, 145 11, 146 11, 146 10, 145 10)'
+        'name':'mars'}
+        >>> geom = 'LINESTRING(145 10, 145 10.25, 145.25 10.25, 145.25 10, 145 10)'
         >>> srid = 949900
         >>> outpath = '/scratch/jlaura/fromdb'
-        >>> query = f"SELECT * FROM Images WHERE ST_INTERSECTS(geom, ST_Polygon(ST_GeomFromText('{geom}'), {srid})) = TRUE"
-        >>> ncg = NetworkCandidateGraph.from_remote_database(source_db_config, outpath, query_string=query)
+        >>> query = f"SELECT * FROM ctx WHERE ST_INTERSECTS(geom, ST_Polygon(ST_GeomFromText('{geom}'), {srid})) = TRUE"
+        >>> ncg.add_from_remote_database(source_db_config, outpath, query_string=query)
         """
 
         sourceSession, _ = new_connection(source_db_config)
@@ -1845,7 +1845,7 @@ WHERE
 
         sourceimages = sourcesession.execute(query_string).fetchall()
 
-        destinationsession = Session()
+        destinationsession = self.Session()
         destinationsession.execute(Images.__table__.insert(), sourceimages)
 
         # Get the camera objects to manually join. Keeps the caller from
@@ -1860,10 +1860,10 @@ WHERE
         sourcesession.close()
 
         # Create the graph, copy the images, and compute the overlaps
-        obj = cls.from_database()
-        obj.copy_images(path)
-        obj._execute_sql(compute_overlaps_sql)
-        return obj
+        self.copy_images(path)
+        self.from_database()
+        self._execute_sql(compute_overlaps_sql)
+        
 
     def from_database(self, query_string='SELECT * FROM public.images'):
         """
