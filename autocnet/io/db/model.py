@@ -238,7 +238,7 @@ class Overlay(BaseMixin, Base):
             return self._geom
     @geom.setter
     def geom(self, geom):
-        self._geom = from_shape(geom, srid=self.atitudinal_srid)
+        self._geom = from_shape(geom, srid=self.latitudinal_srid)
 
     @classmethod
     def overlapping_larger_than(cls, size_threshold, Session):

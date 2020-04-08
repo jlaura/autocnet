@@ -8,18 +8,13 @@ import sqlalchemy
 from unittest.mock import MagicMock, patch
 
 from autocnet.io.db import model
-from autocnet import Session, engine
 from autocnet.graph.network import NetworkCandidateGraph
 
 from shapely.geometry import MultiPolygon, Polygon, Point
 
 @pytest.fixture
-def tables():
-    return engine.table_names()
-
-@pytest.fixture
-def session(tables, request):
-    session = Session()
+def session(tables, request, ncg):
+    session = ncg.Session()
 
     def cleanup():
         session.rollback()  # Necessary because some tests intentionally fail
@@ -165,7 +160,7 @@ def test_measures_exists(tables):
                                                                                      'adjustedCovar': [[]],
                                                                                      'apriorisample': [0],
                                                                                      'aprioriline': [0]}))
-def test_jigsaw_append(mockFunc, session, measure_data, point_data, image_data):
+def test_jigsaw_append(mockFunc, session, measure_data, point_data, image_data, ncg):
     model.Images.create(session, **image_data)
     model.Points.create(session, **point_data)
     model.Measures.create(session, **measure_data)
@@ -173,7 +168,7 @@ def test_jigsaw_append(mockFunc, session, measure_data, point_data, image_data):
     assert resp.liner == None
     assert resp.sampler == None
 
-    NetworkCandidateGraph.update_from_jigsaw(session, '/Some/Path/To/An/ISISNetwork.cnet')
+    ncg.update_from_jigsaw(session, '/Some/Path/To/An/ISISNetwork.cnet')
     resp = session.query(model.Measures).filter(model.Measures.id == 1).first()
     assert resp.liner == 0.1
     assert resp.sampler == 0.1

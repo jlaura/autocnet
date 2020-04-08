@@ -6,10 +6,10 @@ import pandas as pd
 import pytest
 
 from autocnet.control import control
-from autocnet.graph.network import CandidateGraph
+from autocnet.graph.network import CandidateGraph, NetworkCandidateGraph
 from autocnet.graph import edge, node
 from autocnet.graph.node import Node
-from autocnet import engine, Session
+
 
 from plio.io.io_gdal import GeoDataset
 
@@ -55,6 +55,45 @@ def candidategraph(node_a, node_b, node_c):
     cg.nodes[2]['data'] = node_c
 
     return cg
+
+@pytest.fixture
+def default_configuration():
+    config = {'cluster': {'maxfailures': 3,
+              'queue': '',
+              'cluster_log_dir': '',
+              'cluster_submission': '',
+              'tmp_scratch_dir': '',
+              'extractor_memory': 8192,
+              'processing_memory': 8192},
+              'database': {'type': 'postgresql',
+                  'username': 'postgres',
+                  'password': '',
+                  'host': 'localhost',
+                  'port': 15432,
+                  'pgbouncer_port': 15432,
+                  'name': 'travis_ci_test',
+                  'timeout': 500},
+              'pfeffernusse': {'url': ''},
+              'redis': {'basename': 'basename',
+                  'host': 'host',
+                  'port': '1111',
+                  'completed_queue': 'basename:done',
+                  'processing_queue': 'basename:proc',
+                  'working_queue': 'basename:working'},
+              'spatial': {'target': 'MARS',
+                  'latitudinal_srid': 4326,
+                  'rectangular_srid': 4978,
+                  'semimajor_rad': 3396190,
+                  'semiminor_rad': 3376200,
+                  'proj4_str': '+proj:longlat +a:3396190 +b:3376200 +no_defs',
+                  'dem': None}}
+    return config
+
+@pytest.fixture()
+def ncg(default_configuration):
+    ncg = NetworkCandidateGraph()
+    ncg.config_from_dict(default_configuration)
+    return ncg
 
 @pytest.fixture(scope='session')
 def node_a(geodata_a):
@@ -138,14 +177,15 @@ def controlnetwork():
 
     return df
 
-
 @pytest.fixture
-def tables():
+def tables(ncg):
+    engine = ncg.Session().get_bind()
     return engine.table_names()
 
 @pytest.fixture
-def session(tables, request):
-    session = Session()
+def session(tables, request, ncg):
+
+    session = ncg.Session()
 
     def cleanup():
         session.rollback()  # Necessary because some tests intentionally fail
