@@ -1369,7 +1369,11 @@ class NetworkCandidateGraph(CandidateGraph):
 
     def _setup_dem(self):
         spatial = self.config['spatial']
-        self.dem = GeoDataset(spatial.get('dem', None))
+        dem = spatial.get('dem', False)
+        if dem:
+            self.dem = GeoDataset(dem)
+        else:
+            self.dem = None
 
     def _setup_database(self):
         db = self.config['database']
@@ -1429,7 +1433,7 @@ class NetworkCandidateGraph(CandidateGraph):
         conn.execute(sql)
         conn.close()
     
-    def _push_obj_message(self, onobj, function, walltime, args, kwargs):
+    def _push_obj_messages(self, onobj, function, walltime, args, kwargs):
         """
         Push messages to the redis queue for objects e.g., Nodes and Edges
         """
@@ -1455,10 +1459,11 @@ class NetworkCandidateGraph(CandidateGraph):
                     'kwargs':kwargs,
                     'walltime':walltime,
                     'image_path':image_path,
-                    'param_step':1}
+                    'param_step':1, 
+                    'config':self.config}
 
             self.redis_queue.rpush(self.processing_queue, json.dumps(msg, cls=JsonEncoder))
-        return job_counter
+        return job_counter + 1
     
     def _push_row_messages(self, query_obj, on, function, walltime, filters, args, kwargs):
         session = self.Session()
@@ -1540,13 +1545,14 @@ class NetworkCandidateGraph(CandidateGraph):
         # Determine which obj will be called
         onobj = options[on]
         res = []
-
+        
         if not isinstance(function, (str, bytes)):
             raise TypeError('Function argument must be a string or bytes object.')
-        if isinstance(onobj, (Node, Edge, NetworkNode, NetworkEdge)):
-            job_counter = self._push_obj_messages(onobj, function, walltime, args, kwargs)
-        elif isinstance(onobj, DeclarativeMeta):
+        if isinstance(onobj, DeclarativeMeta):
             job_counter = self._push_row_messages(onobj, on, function, walltime, filters, args, kwargs)
+        else:
+            job_counter = self._push_obj_messages(onobj, function, walltime, args, kwargs)
+     
 
         # Submit the jobs
         rconf = self.config['redis']
@@ -1682,8 +1688,7 @@ WHERE
         cnet.to_isis(df, path, targetname=target)
         cnet.write_filelist(fpaths, path=flistpath)
 
-    @staticmethod
-    def update_from_jigsaw(session, path):
+    def update_from_jigsaw(self, session, path):
         """
         Updates the measures table in the database with data from
         a jigsaw bundle adjust
@@ -1952,7 +1957,7 @@ WHERE
 
         cnetpoints = cnet.groupby('id')
         points = []
-        session = Session()
+        session = self.Session()
 
         for id, cnetpoint in cnetpoints:
             def get_measures(row):
@@ -2022,43 +2027,6 @@ WHERE
         job cancellation or hanging jobs.
         """
         self.redis_queue.flushdb()
-
-    def cluster_subpixel_register_measures(self, iterative_phase_kwargs={'size': 251},
-                                     subpixel_template_kwargs={'image_size':(251,251)},
-                                     cost_kwargs={},
-                                     threshold=0.005,
-                                     filters={},
-                                     walltime='00:10:00',
-                                     chunksize=1000,
-                                     exclude=None):
-
-        session = self.Session()
-        query = session.query(Measures)
-        for attr, value in filters.items():
-            query = query.filter(getattr(Measures, attr)==value)
-        res = query.all()
-        for i, measure in enumerate(res):
-            msg = {'id' : measure.id,
-                   'iterative_phase_kwargs' : iterative_phase_kwargs,
-                   'subpixel_template_kwargs' : subpixel_template_kwargs,
-                   'threshold':threshold,
-                   'cost_kwargs': cost_kwargs,
-                   'walltime' : walltime}
-            self.redis_queue.rpush(self.processing_queue, 
-            json.dumps(msg, cls=JsonEncoder))
-        session.close()
-
-        job_counter = i + 1
-
-        # Submit the jobs
-        submitter = Slurm('acn_subpixel_measure',
-                     job_name='subpixel_register_measure',
-                     mem_per_cpu=self.config['cluster']['processing_memory'],
-                     time=walltime,
-                     partition=self.config['cluster']['queue'],
-                     output=self.config['cluster']['cluster_log_dir']+f'/autocnet.subpixel_register-%j')
-        submitter.submit(array='1-{}'.format(job_counter), chunksize=chunksize, exclude=exclude)
-        return job_counter
 
     def cluster_propagate_control_network(self, 
                                           base_cnet, 
