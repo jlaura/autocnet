@@ -561,6 +561,7 @@ class NetworkNode(Node):
             return
         with self.parent.session_scope() as session:
             res = session.query(table_obj).filter(getattr(table_obj,key) == self['node_id']).first()
+            session.expunge_all()
         return res
     
     @property
@@ -711,8 +712,7 @@ class NetworkNode(Node):
         """
         Gets the ignore flag from the Images table
         """
-        with self.parent.session_scope() as session:
-            res = self._from_db(Images, key='id')
+        res = self._from_db(Images, key='id')
         return res.ignore
 
     @ignore.setter

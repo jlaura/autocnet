@@ -743,6 +743,7 @@ class NetworkEdge(Edge):
             res = session.query(table_obj).\
                    filter(table_obj.source == self.source['node_id']).\
                    filter(table_obj.destination == self.destination['node_id'])
+            session.expunge_all()
         return res
 
     @property
