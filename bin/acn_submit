@@ -40,12 +40,8 @@ def _instantiate_obj(msg, ncg):
     return obj
 
 def _instantiate_row(msg, ncg):
-    objdict = {'measure' : Measures,
-               'measures' : Measures,
-               'point' : Points,
-               'points' : Points,
-               'overlap' : Overlay,
-               'overlaps' : Overlay}
+    # Get the dict mapping iterable keyword types to the objects
+    objdict = ncg.apply_iterable_options
     rowid = msg['id']
 
     session = ncg.Session()

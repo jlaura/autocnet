@@ -1314,6 +1314,29 @@ class NetworkCandidateGraph(CandidateGraph):
     node_factory = NetworkNode
     edge_factory = NetworkEdge
 
+    apply_iterable_options = {
+            'edge' : self.edges,
+            'edges' : self.edges,
+            'e' : self.edges,
+            0 : self.edges,
+            'node' : self.nodes,
+            'nodes' : self.nodes,
+            'n' : self.nodes,
+            1 : self.nodes,
+            'measures' : Measures,
+            'measure' : Measures,
+            'm' : Measures,
+            2 : Measures,
+            'points' : Points,
+            'point' : Points,
+            'p' : Points,
+            3 : Points,
+            'overlaps': Overlay,
+            'overlap' : Overlay,
+            'o' :Overlay,
+            4: Overlay
+        }
+
     def __init__(self, *args, **kwargs):
         super(NetworkCandidateGraph, self).__init__(*args, **kwargs)
         # Job metadata
@@ -1521,31 +1544,8 @@ class NetworkCandidateGraph(CandidateGraph):
                    in the format Hour:Minute:Second, 00:00:00
         """
 
-        options = {
-            'edge' : self.edges,
-            'edges' : self.edges,
-            'e' : self.edges,
-            0 : self.edges,
-            'node' : self.nodes,
-            'nodes' : self.nodes,
-            'n' : self.nodes,
-            1 : self.nodes,
-            'measures' : Measures,
-            'measure' : Measures,
-            'm' : Measures,
-            2 : Measures,
-            'points' : Points,
-            'point' : Points,
-            'p' : Points,
-            3 : Points,
-            'overlaps': Overlay,
-            'overlap' : Overlay,
-            'o' :Overlay,
-            4: Overlay
-        }
-
         # Determine which obj will be called
-        onobj = options[on]
+        onobj = self.apply_iterable_options[on]
         res = []
         
         if not isinstance(function, (str, bytes)):
