@@ -1467,7 +1467,7 @@ class NetworkCandidateGraph(CandidateGraph):
     
     def _push_row_messages(self, query_obj, on, function, walltime, filters, args, kwargs):
         """
-        Push messages to the redis queue for DB objects e.g., Points, Measures
+        Push messages to the redis queue for DB objects e.g., Points, Measures 
         """
         with self.session_scope() as session:
             query = session.query(query_obj)
