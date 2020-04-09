@@ -659,7 +659,7 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={},
     """
     Session = ncg.Session
     if not Session:
-        raise BrokenPipeError('This func requires a database session.')
+        raise BrokenPipeError('This func requires a database session from a NetworkCandidateGraph.')
     
     if isinstance(pointid, Points):
         pointid = pointid.id
