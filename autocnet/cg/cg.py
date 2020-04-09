@@ -266,7 +266,7 @@ def nearest(pt, search):
     """
     return np.argmin(np.sum((search - pt)**2, axis=1))
 
-def find_side(geom, side):
+def find_side(side, Session):
     """
     Parameters
     ----------
@@ -292,6 +292,16 @@ def find_side(geom, side):
     func = func[side]
     order = {'east': 'desc', 'west': 'asc'}
     order = order[side]
+
+    query = f"""
+    select ST_AsText(geom) from images
+    order by {func}(geom) {order}
+    limit 1 """
+
+    session = Session()
+    geom = session.execute(query).first()
+    geom = wkt.loads(geom[0])
+    session.close()
 
     #find eastern/wertern most side of east_geom/west_geom
     fp = geom.minimum_rotated_rectangle
@@ -357,7 +367,7 @@ def xy_in_polygon(x,y, geom):
     return geom.contains(Point(x, y))
 
 
-def distribute_points_classic(geom, nspts, ewpts):
+def distribute_points_classic(geom, nspts, ewpts, **kwargs):
     """
     This is a decision tree that attempts to perform a
     very simplistic approximation of the shape
@@ -417,7 +427,7 @@ def distribute_points_classic(geom, nspts, ewpts):
     valid = [p for p in points if xy_in_polygon(p[0], p[1], geom)]
     return valid
 
-def distribute_points_new(geom, nspts, ewpts):
+def distribute_points_new(geom, nspts, ewpts, Session):
     """
     This is a decision tree that attempts to perform a
     very simplistic approximation of the shape
@@ -452,11 +462,11 @@ def distribute_points_new(geom, nspts, ewpts):
     ul = coords[3]
 
     # Find the points nearest the ur and ll aligned // with eastern side of ground_poly
-    elon, elat = find_side('east')
+    elon, elat = find_side('east', Session)
     ur_actual = np.array(two_point_extrapolate(ur[1], elat, elon))[::-1]
     lr_actual = np.array(two_point_extrapolate(lr[1],elat, elon))[::-1]
 
-    wlon, wlat = find_side('west')
+    wlon, wlat = find_side('west', Session)
     ul_actual = np.array(two_point_extrapolate(ul[1], wlat, wlon))[::-1]
     ll_actual = np.array(two_point_extrapolate(ll[1], wlat, wlon))[::-1]
 
@@ -483,7 +493,8 @@ def distribute_points_new(geom, nspts, ewpts):
 
 def distribute_points_in_geom(geom, method="classic",
                               nspts_func=lambda x: ceil(round(x,1)*10),
-                              ewpts_func=lambda x: ceil(round(x,1)*5)):
+                              ewpts_func=lambda x: ceil(round(x,1)*5),
+                              Session=None):
     """
     Given a geometry, attempt a basic classification of the shape.
     RIght now, this simply attempts to determine if the bounding box
@@ -564,7 +575,7 @@ def distribute_points_in_geom(geom, method="classic",
         if nspts == 1 and ewpts == 1:
             valid = single_centroid(geom)
         else:
-            valid = point_distribution_func(geom, nspts, ewpts)
+            valid = point_distribution_func(geom, nspts, ewpts, Session=Session)
     elif ew == True:
         # Since this is an LS, we should place these diagonally from the 'lower left' to the 'upper right'
         nspts = ewpts_func(short)
@@ -572,7 +583,7 @@ def distribute_points_in_geom(geom, method="classic",
         if nspts == 1 and ewpts == 1:
             valid = single_centroid(geom)
         else:
-            valid = point_distribution_func(geom, nspts, ewpts)
+            valid = point_distribution_func(geom, nspts, ewpts, Session=Session)
     else:
         print('WTF Willy')
     return valid

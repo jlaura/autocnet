@@ -1466,29 +1466,31 @@ class NetworkCandidateGraph(CandidateGraph):
         return job_counter + 1
     
     def _push_row_messages(self, query_obj, on, function, walltime, filters, args, kwargs):
-        session = self.Session()
-        query = session.query(query_obj)
-    
-        # Now apply any filters that might be passed in.
-        for attr, value in filters.items():
-            query = query.filter(getattr(query_obj, attr)==value)
+        """
+        Push messages to the redis queue for DB objects e.g., Points, Measures
+        """
+        with self.session_scope() as session:
+            query = session.query(query_obj)
         
-        # Execute the query to get the rows to be processed
-        res = query.all()
+            # Now apply any filters that might be passed in.
+            for attr, value in filters.items():
+                query = query.filter(getattr(query_obj, attr)==value)
+            
+            # Execute the query to get the rows to be processed
+            res = query.all()
 
-        if len(res) == 0:
-            raise ValueError('Query returned zero results.')
-        for row in res:
-            msg = {'along':on,
-                    'id':row.id,
-                    'func':function,
-                    'args':args, 
-                    'kwargs':kwargs,
-                    'walltime':walltime}
-            msg['config'] = self.config  # Hacky for now, just passs the whole config dict
-            self.redis_queue.rpush(self.processing_queue,
-                                json.dumps(msg, cls=JsonEncoder))
-        session.close()
+            if len(res) == 0:
+                raise ValueError('Query returned zero results.')
+            for row in res:
+                msg = {'along':on,
+                        'id':row.id,
+                        'func':function,
+                        'args':args, 
+                        'kwargs':kwargs,
+                        'walltime':walltime}
+                msg['config'] = self.config  # Hacky for now, just passs the whole config dict
+                self.redis_queue.rpush(self.processing_queue,
+                                    json.dumps(msg, cls=JsonEncoder))
         return len(res)
 
     def apply(self, function, on='edge', args=(), walltime='01:00:00', chunksize=1000, filters={}, **kwargs):
@@ -1845,18 +1847,17 @@ WHERE
 
         sourceimages = sourcesession.execute(query_string).fetchall()
 
-        destinationsession = self.Session()
-        destinationsession.execute(Images.__table__.insert(), sourceimages)
+        with session_scope() as destinationsession:
+            destinationsession = self.Session()
+            destinationsession.execute(Images.__table__.insert(), sourceimages)
 
-        # Get the camera objects to manually join. Keeps the caller from
-        # having to remember to bring cameras as well.
-        ids = [i[0] for i in sourceimages]
-        #cameras = sourcesession.query(Cameras).filter(Cameras.image_id.in_(ids)).all()
-        #for c in cameras:
-        #    destinationsession.merge(c)
+            # Get the camera objects to manually join. Keeps the caller from
+            # having to remember to bring cameras as well.
+            ids = [i[0] for i in sourceimages]
+            #cameras = sourcesession.query(Cameras).filter(Cameras.image_id.in_(ids)).all()
+            #for c in cameras:
+            #    destinationsession.merge(c)
 
-        destinationsession.commit()
-        destinationsession.close()
         sourcesession.close()
 
         # Create the graph, copy the images, and compute the overlaps

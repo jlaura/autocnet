@@ -117,7 +117,7 @@ def place_points_in_overlap(overlap,
 
     # Determine the point distribution in the overlap geom
     geom = overlap.geom
-    valid = compgeom.distribute_points_in_geom(geom, **distribute_points_kwargs)
+    valid = compgeom.distribute_points_in_geom(geom, **distribute_points_kwargs, **kwargs)
     if not valid:
         warnings.warn('Failed to distribute points in overlap')
         return []
