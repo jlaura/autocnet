@@ -9,6 +9,7 @@ from skimage import transform as tf
 from matplotlib import pyplot as plt
 
 from plio.io.io_gdal import GeoDataset
+from pysis.exceptions import ProcessError
 
 from autocnet.matcher.naive_template import pattern_match, pattern_match_autoreg
 from autocnet.matcher import ciratefi
@@ -76,6 +77,9 @@ def check_image_size(imagesize):
     imagesize : tuple
                 in the form (size_x, size_y)
     """
+    if isinstance(imagesize, int):
+        imagesize = (imagesize, imagesize)
+
     x = imagesize[0]
     y = imagesize[1]
 
@@ -343,7 +347,7 @@ def subpixel_ciratefi(sx, sy, dx, dy, s_img, d_img, search_size=251, template_si
     dy += (y_offset + t_roi.ayr)
     return dx, dy, strength
 
-def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=(251, 251), reduction=11, convergence_threshold=1.0, max_dist=50, **kwargs):
+def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=(51, 51), reduction=11, convergence_threshold=1.0, max_dist=50, **kwargs):
     """
     Iteratively apply a subpixel phase matcher to source (s_img) and destination (d_img)
     images. The size parameter is used to set the initial search space. The algorithm
@@ -393,10 +397,7 @@ def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=(251, 251), reduction=11,
     dline = dy
 
     while True:
-        try:
-            shifted_dx, shifted_dy, metrics = subpixel_phase(sx, sy, dx, dy, s_img, d_img, image_size=size, **kwargs)
-        except:
-            return None, None, None
+        shifted_dx, shifted_dy, metrics = subpixel_phase(sx, sy, dx, dy, s_img, d_img, image_size=size, **kwargs)
 
         # Compute the amount of move the matcher introduced
         delta_dx = abs(shifted_dx - dx)
@@ -414,7 +415,6 @@ def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=(251, 251), reduction=11,
            delta_dy<= convergence_threshold and\
            abs(dist) <= max_dist:
            break
-
     return dx, dy, metrics
 
 
@@ -446,8 +446,10 @@ def geom_match(base_cube, input_cube, bcenter_x, bcenter_y, size_x=60, size_y=60
     if base_starty < 0:
         raise Exception(f"Window: {base_starty} < 0, center: {bcenter_x},{bcenter_y}")
 
+    # specifically not putting this in a try except, because this should never fail,
+    # want to throw error if there is one
     mlat, mlon = spatial.isis.image_to_ground(base_cube.file_name, bcenter_x, bcenter_y)
-    center_x, center_y = spatial.isis.ground_to_image(input_cube.file_name, mlon, mlat)
+    center_x, center_y = spatial.isis.ground_to_image(input_cube.file_name, mlon, mlat)[::-1]
 
     match_points = [(base_startx,base_starty),
                     (base_startx,base_stopy),
@@ -456,13 +458,13 @@ def geom_match(base_cube, input_cube, bcenter_x, bcenter_y, size_x=60, size_y=60
 
     cube_points = []
     for x,y in match_points:
-        lat, lon = spatial.isis.image_to_ground(base_cube.file_name, x, y)
-        cube_points.append(spatial.isis.ground_to_image(input_cube.file_name, lon, lat)[::-1])
-
-    input_cube_extents = input_cube.raster_size
-    for x,y in cube_points:
-        if x < 0 or y < 0 or x > input_cube_extents[0] or y > input_cube_extents[1]:
-            return None, None, None, None, None
+        try:
+            lat, lon = spatial.isis.image_to_ground(base_cube.file_name, x, y)
+            cube_points.append(spatial.isis.ground_to_image(input_cube.file_name, lon, lat)[::-1])
+        except ProcessError as e:
+            if 'Requested position does not project in camera model' in e.stderr:
+                print(f'Skip geom_match; Region of interest corner located at ({lon}, {lat}) does not project to image {input_cube.base_name}')
+                return None, None, None, None, None
 
     base_gcps = np.array([*match_points])
     base_gcps[:,0] -= base_startx
@@ -538,7 +540,7 @@ def geom_match(base_cube, input_cube, bcenter_x, bcenter_y, size_x=60, size_y=60
       pcm = axs[2].imshow(corrmap**2, interpolation=None, cmap="coolwarm")
       plt.show()
 
-    dist = np.linalg.norm([center_x-x, center_y-y])
+    dist = np.linalg.norm([center_x-sample, center_y-line])
     return sample, line, dist, maxcorr, corrmap
 
 
@@ -694,7 +696,6 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={},
             currentlog['status'] = 'Failed to geom match.'
             resultlog.append(currentlog)
             continue
-
         cost = cost_func(dist, template_metric)
 
         if cost <= threshold:
