@@ -1,4 +1,3 @@
-from contextlib import contextmanager
 import socket
 
 import sqlalchemy
@@ -36,23 +35,8 @@ def new_connection(dbconfig):
                                                   dbconfig['name'])
     hostname = socket.gethostname()
     engine = sqlalchemy.create_engine(db_uri,
-                #poolclass=sqlalchemy.pool.NullPool,
+                poolclass=sqlalchemy.pool.NullPool,
                 connect_args={"application_name":f"AutoCNet_{hostname}"},
                 isolation_level="AUTOCOMMIT")
     Session = orm.sessionmaker(bind=engine, autocommit=False)
     return Session, engine
-
-@contextmanager
-def session_scope():
-     """
-     Provide a transactional scope around a series of operations.
-     """
-     session = Session()
-     try:
-         yield session
-         session.commit()
-     except:
-         session.rollback()
-         raise
-     finally:
-         session.close()

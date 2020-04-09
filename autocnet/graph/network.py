@@ -1864,7 +1864,6 @@ WHERE
         self.from_database()
         self._execute_sql(compute_overlaps_sql)
         
-
     def from_database(self, query_string='SELECT * FROM public.images'):
         """
         This is a constructor that takes the results from an arbitrary query string,
