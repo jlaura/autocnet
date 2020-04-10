@@ -635,8 +635,9 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={},
 
     Parameters
     ----------
-    Session : obj
-              An SQLAlchemy Session factory
+    ncg : obj
+          the network candidate graph that the point is associated with; used for 
+          the DB session that is able to access the point.
 
     pointid : int or obj
               The identifier of the point in the DB or a Points object
@@ -664,60 +665,57 @@ def subpixel_register_point(pointid, iterative_phase_kwargs={},
     if isinstance(pointid, Points):
         pointid = pointid.id
     
-    session = Session()
-    measures = session.query(Measures).filter(Measures.pointid == pointid).order_by(Measures.id).all()
-    source = measures[0]
+    with ncg.session_scope() as session:
+        measures = session.query(Measures).filter(Measures.pointid == pointid).order_by(Measures.id).all()
+        source = measures[0]
 
-    sourceid = source.imageid
-    res = session.query(Images).filter(Images.id == sourceid).one()
-    source_node = NetworkNode(node_id=sourceid, image_path=res.path)
-    source_node.parent = ncg
+        sourceid = source.imageid
+        res = session.query(Images).filter(Images.id == sourceid).one()
+        source_node = NetworkNode(node_id=sourceid, image_path=res.path)
+        source_node.parent = ncg
 
-    print(f'Attempting to subpixel register {len(measures)} measures for point {pointid}')
+        print(f'Attempting to subpixel register {len(measures)} measures for point {pointid}')
 
-    resultlog = []
-    for measure in measures[1:]:
-        currentlog = {'measureid':measure.id,
-                      'status':''}
-        cost = None
-        destinationid = measure.imageid
+        resultlog = []
+        for measure in measures[1:]:
+            currentlog = {'measureid':measure.id,
+                        'status':''}
+            cost = None
+            destinationid = measure.imageid
 
-        res = session.query(Images).filter(Images.id == destinationid).one()
-        destination_node = NetworkNode(node_id=destinationid, image_path=res.path)
-        destination_node.parent = ncg
+            res = session.query(Images).filter(Images.id == destinationid).one()
+            destination_node = NetworkNode(node_id=destinationid, image_path=res.path)
+            destination_node.parent = ncg
 
-        new_x, new_y, dist, template_metric,  _ = geom_match(source_node.geodata, destination_node.geodata,
-                                                      source.sample, source.line,
-                                                      template_kwargs=subpixel_template_kwargs,
-                                                      phase_kwargs=iterative_phase_kwargs, size_x=100, size_y=100)
+            new_x, new_y, dist, template_metric,  _ = geom_match(source_node.geodata, destination_node.geodata,
+                                                        source.sample, source.line,
+                                                        template_kwargs=subpixel_template_kwargs,
+                                                        phase_kwargs=iterative_phase_kwargs, size_x=100, size_y=100)
 
-        if new_x == None or new_y == None:
-            measure.ignore = True # Unable to phase match
-            currentlog['status'] = 'Failed to geom match.'
+            if new_x == None or new_y == None:
+                measure.ignore = True # Unable to phase match
+                currentlog['status'] = 'Failed to geom match.'
+                resultlog.append(currentlog)
+                continue
+            cost = cost_func(dist, template_metric)
+
+            if cost <= threshold:
+                measure.ignore = True # Threshold criteria not met
+                currentlog['status'] = f'Cost failed. Distance shifted: {dist}. Metric: {template_metric}.'
+                resultlog.append(currentlog)
+                continue
+
+            # Update the measure
+            measure.sample = new_x
+            measure.line = new_y
+            measure.weight = cost
+
+            # In case this is a second run, set the ignore to False if this
+            # measures passed. Also, set the source measure back to ignore=False
+            measure.ignore = False
+            source.ignore = False
+            currentlog['status'] = f'Success.'
             resultlog.append(currentlog)
-            continue
-        cost = cost_func(dist, template_metric)
-
-        if cost <= threshold:
-            measure.ignore = True # Threshold criteria not met
-            currentlog['status'] = f'Cost failed. Distance shifted: {dist}. Metric: {template_metric}.'
-            resultlog.append(currentlog)
-            continue
-
-        # Update the measure
-        measure.sample = new_x
-        measure.line = new_y
-        measure.weight = cost
-
-        # In case this is a second run, set the ignore to False if this
-        # measures passed. Also, set the source measure back to ignore=False
-        measure.ignore = False
-        source.ignore = False
-        currentlog['status'] = f'Success.'
-        resultlog.append(currentlog)
-
-    session.commit()
-    session.close()
 
     return resultlog
 
