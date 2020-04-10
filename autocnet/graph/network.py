@@ -1314,29 +1314,6 @@ class NetworkCandidateGraph(CandidateGraph):
     node_factory = NetworkNode
     edge_factory = NetworkEdge
 
-    apply_iterable_options = {
-            'edge' : self.edges,
-            'edges' : self.edges,
-            'e' : self.edges,
-            0 : self.edges,
-            'node' : self.nodes,
-            'nodes' : self.nodes,
-            'n' : self.nodes,
-            1 : self.nodes,
-            'measures' : Measures,
-            'measure' : Measures,
-            'm' : Measures,
-            2 : Measures,
-            'points' : Points,
-            'point' : Points,
-            'p' : Points,
-            3 : Points,
-            'overlaps': Overlay,
-            'overlap' : Overlay,
-            'o' :Overlay,
-            4: Overlay
-        }
-
     def __init__(self, *args, **kwargs):
         super(NetworkCandidateGraph, self).__init__(*args, **kwargs)
         # Job metadata
@@ -1348,6 +1325,29 @@ class NetworkCandidateGraph(CandidateGraph):
             d.parent = self
         for s, d, e in self.edges(data='data'):
             e.parent = self
+
+        self. apply_iterable_options = {
+                'edge' : self.edges,
+                'edges' : self.edges,
+                'e' : self.edges,
+                0 : self.edges,
+                'node' : self.nodes,
+                'nodes' : self.nodes,
+                'n' : self.nodes,
+                1 : self.nodes,
+                'measures' : Measures,
+                'measure' : Measures,
+                'm' : Measures,
+                2 : Measures,
+                'points' : Points,
+                'point' : Points,
+                'p' : Points,
+                3 : Points,
+                'overlaps': Overlay,
+                'overlap' : Overlay,
+                'o' :Overlay,
+                4: Overlay
+            }
 
     def config_from_file(self, filepath):
         """
