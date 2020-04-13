@@ -184,6 +184,6 @@ criteria:
 filters = {'ignore' : True}  # A database filter in the form column name : equality
 njobs = ncg.apply('matcher.subpixel.subpixel_register_measure',
                   on='measures',
-                  filters=filters)"""
+                  filters=filters)
 ```
 
