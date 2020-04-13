@@ -88,9 +88,9 @@ def default_configuration():
                   'semiminor_rad': 3376200,
                   'proj4_str': '+proj:longlat +a:3396190 +b:3376200 +no_defs',
                   'dem': None}}
-     if os.environ.get('TRAVIS', False):
-         config['database']['password'] = ''
-     return config
+    if os.environ.get('TRAVIS', False):
+        config['database']['password'] = ''
+    return config
 
 @pytest.fixture()
 def ncg(default_configuration):
