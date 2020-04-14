@@ -57,13 +57,16 @@ NetworkCandidateGraph()`.
 
 The network candidate graph (or NCG) is assocaited with a collection of
 PostGreSQL database tables. We have to initiate the database connection via a
-configuration file. The configuration file. An example configuration file is
+configuration file. An example configuration file is
 provided in the config directory. `ncg.config_from_file('config/demo.yml')`
 
 Once configured, the images need to be loaded and the graph of potential
 overlapping images generated. We do this with `ncg.from_database()`.
 
-At this point, you have a fully functioning autocnet project using an NCG.
+At this point, you have a fully functioning autocnet project using an NCG. The
+above snippet assumes that a prepopulated database already exists. Keep reading
+to see how AutoCNet supports importing images from an existing image data
+store.
 
 ### Import images from a data store containing image footprints
 Autocnet does not assume where your image footprints are coming from for
@@ -108,7 +111,9 @@ the quert string be valid SQL. `geom = 'LINESTRING(145 10, 145 10.25, 145.25
 
 The PostGIS query requires a valid SRID for the input geometry, so we
 explicitly define that here. This is the SRID that the footprints are being
-stored in inside of the data store. `srid = 949900`.
+stored in inside of the data store. `srid = 949900` The srid here is a custom
+srid that has been added to the data store spatial reference table; the id can
+be any arbitrary number as long as it exists in the spatial reference table.
 
 The `add_from_remote_database` call copies the image files in the source
 database into a new directory. Here we define that directory. `outpath =
@@ -121,7 +126,7 @@ Finally, our database associated with the NCG is populated and the image data
 are copied. `ncg.add_from_remote_database(source_db_config, outpath,
 query_string=query)`
 
-### Operations on the NCG
+### Operations on the NCG: Database Rows
 After we have an NCG, we want to perform operations on the graph or on database
 rows associated with the graph (e.g., the Points, Measures, or Image Overlaps).
 We use a functional approach where an arbitray function can be applied to an
@@ -167,7 +172,7 @@ njobs = ncg.apply('spatial.overlap.place_points_in_overlap',
 ```
 
 Here, we are applying the `spatial.overlap.place_points_in_overlap` function on
-an iterable (`overlaps`) with two keyword arguments (that the function is
+an iterable (`overlaps`) with three keyword arguments (that the function is
 expecting). The syntax for the function is module.submodule.function_name'.
 Where the submodule can be repeated, e.g.,
 module.submodule.subsubmodule.function_name.
@@ -187,3 +192,23 @@ njobs = ncg.apply('matcher.subpixel.subpixel_register_measure',
                   filters=filters)
 ```
 
+### Operations on the NCG: Nodes and Edges
+Just like the above example, it is possible to apply arbitrary functions to
+nodes and edges in a NetworkCandidateGraph.
+
+```
+ncg = NetworkCandidateGraph()
+ncg.config_from_file('/home/jlaura/autocnet_projects/demo.yml')
+ncg.from_database()
+
+njobs = ncg.apply('network_to_matches', on='edges')
+```
+
+After the standard boilerplate, the `network_to_matches` function is applied to
+every edge in the graph. This function takes the points and measures from the
+database and expands them so that every edge now has the pairwise
+(measure-to-measure) information that is frequently quite useful when using
+computer vision techniques. Note that the function to be called is not longer
+being specificed with the import path (e.g.,
+spatial.overlap.place_points_in_overla-). Instead any method on the autocnet
+Edge or NetworkEdge objects can be called.
