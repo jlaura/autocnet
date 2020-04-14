@@ -152,7 +152,7 @@ def ew(x):
     return ceil(round(x,1)*1)
 
 # Pack a set of kwargs into a keyword that the called function is expecting
-distribute_points_kwargs = {'nspts_func':ns, 'ewpts_func':ew, 'method':'new'}
+distribute_points_kwargs = {'nspts_func':ns, 'ewpts_func':ew}
 
 # Apply a function on an iterable
 njobs = ncg.apply('spatial.overlap.place_points_in_overlap', 
