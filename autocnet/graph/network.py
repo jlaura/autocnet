@@ -1488,20 +1488,28 @@ class NetworkCandidateGraph(CandidateGraph):
             self.redis_queue.rpush(self.processing_queue, json.dumps(msg, cls=JsonEncoder))
         return job_counter + 1
     
-    def _push_row_messages(self, query_obj, on, function, walltime, filters, args, kwargs):
+    def _push_row_messages(self, query_obj, on, function, walltime, filters, query_string, args, kwargs):
         """
         Push messages to the redis queue for DB objects e.g., Points, Measures 
         """
-        with self.session_scope() as session:
-            query = session.query(query_obj)
-        
-            # Now apply any filters that might be passed in.
-            for attr, value in filters.items():
-                query = query.filter(getattr(query_obj, attr)==value)
-            
-            # Execute the query to get the rows to be processed
-            res = query.all()
+        if filters and query_string:
+            warnings.warn('Use of filters and query_string are mutually exclusive.')
 
+        with self.session_scope() as session:
+
+            # Support either an SQL query string, or a simple dict based query
+            if query_string:
+                res = session.execute(query_string).fetchall()
+            else:
+                query = session.query(query_obj)
+
+                # Now apply any filters that might be passed in.
+                for attr, value in filters.items():
+                    query = query.filter(getattr(query_obj, attr)==value)
+                
+                # Execute the query to get the rows to be processed
+                res = query.all()
+                
             if len(res) == 0:
                 raise ValueError('Query returned zero results.')
             for row in res:
@@ -1516,7 +1524,7 @@ class NetworkCandidateGraph(CandidateGraph):
                                     json.dumps(msg, cls=JsonEncoder))
         return len(res)
 
-    def apply(self, function, on='edge', args=(), walltime='01:00:00', chunksize=1000, filters={}, **kwargs):
+    def apply(self, function, on='edge', args=(), walltime='01:00:00', chunksize=1000, filters={}, query_string='', **kwargs):
         """
         A mirror of the apply function from the standard CandidateGraph object. This implementation
         dispatches the job to the cluster as an independent operation instead of applying an arbitrary function
@@ -1551,7 +1559,7 @@ class NetworkCandidateGraph(CandidateGraph):
         if not isinstance(function, (str, bytes)):
             raise TypeError('Function argument must be a string or bytes object.')
         if isinstance(onobj, DeclarativeMeta):
-            job_counter = self._push_row_messages(onobj, on, function, walltime, filters, args, kwargs)
+            job_counter = self._push_row_messages(onobj, on, function, walltime, filters, query_string, args, kwargs)
         else:
             job_counter = self._push_obj_messages(onobj, function, walltime, args, kwargs)
      

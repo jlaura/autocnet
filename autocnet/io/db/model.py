@@ -229,6 +229,12 @@ class Overlay(BaseMixin, Base):
     intersections = Column(ARRAY(Integer))
     #geom = Column(Geometry(geometry_type='POLYGON', management=True))  # sqlite
     _geom = Column("geom", Geometry('POLYGON', srid=latitudinal_srid, dimension=2, spatial_index=True))  # postgresql
+    points = relationship('Points',
+                          primaryjoin='func.ST_Contains(foreign(Overlay.geom), Points.geom).as_comparison(1,2)',
+                          backref=backref('overlay', uselist=False),
+                          viewonly=True,
+                          uselist=True)
+
 
     @hybrid_property
     def geom(self):
