@@ -126,6 +126,21 @@ Finally, our database associated with the NCG is populated and the image data
 are copied. `ncg.add_from_remote_database(source_db_config, outpath,
 query_string=query)`
 
+### Creating a NCG Using a Filelist
+It is also possible to create a NCG and instantiate an associated database from a
+list of ISIS cube files that have had footprints created (using *footprintinit*).
+
+```
+from autocnet.graph.network import NetworkCandidateGraph
+
+ncg = NetworkCandidateGraph.from_filelist(myimages.lis)
+```
+
+This method can take a bit of time to run if the filelist is large as the data
+are loaded into the database and then a spatial overlay oepration is performed
+to determine how individual images overlap with one another (using the footprints
+generated using a priori pointing.)
+
 ### Operations on the NCG: Database Rows
 After we have an NCG, we want to perform operations on the graph or on database
 rows associated with the graph (e.g., the Points, Measures, or Image Overlaps).
