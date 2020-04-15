@@ -225,4 +225,6 @@ database and expands them so that every edge now has the pairwise
 (measure-to-measure) information that is frequently quite useful when using
 computer vision techniques. Note that the function to be called is not longer
 being specificed with the import path (e.g.,
-spatial.overlap.place_points_in_overla-). Instead any method on the autocnet Edge or NetworkEdge objects can be called.
+spatial.overlap.place_points_in_overla-). Note that the function to be called is no longer
+being specificed with the import path (e.g., spatial.overlap.place_points_in_overlaps) because 
+only Edge or NetworkEdge methods can be called on the autocnet Edge or NetworkEdge objects.
