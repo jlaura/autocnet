@@ -137,9 +137,9 @@ ncg = NetworkCandidateGraph.from_filelist(myimages.lis)
 ```
 
 This method can take a bit of time to run if the filelist is large as the data
-are loaded into the database and then a spatial overlay oepration is performed
+are loaded into the database sequentially and then a spatial overlay operation is performed
 to determine how individual images overlap with one another (using the footprints
-generated using a priori pointing.)
+generated from the a priori sensor pointing.)
 
 ### Operations on the NCG: Database Rows
 After we have an NCG, we want to perform operations on the graph or on database
