@@ -32,7 +32,7 @@ We suggest using Anaconda Python to install Autocnet within a virtual environmen
 
 
 ### Setup a project
-This first example imports the object that is used to orchestrate jobs, manage
+This first example imports the NetworkCandidateGraph object, which is used to orchestrate jobs, manage
 a database session, and generally work with the images, points, and measures in
 a control network.
 
