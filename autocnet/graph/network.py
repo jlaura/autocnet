@@ -1558,6 +1558,40 @@ class NetworkCandidateGraph(CandidateGraph):
 
         walltime : str
                    in the format Hour:Minute:Second, 00:00:00
+
+        chunksize : int
+                    The maximum number of jobs to submit per job array. Defaults to 1000.
+                    This number may be have an actualy higher or lower limited based on 
+                    how the cluster has been configured.
+        
+        filters : dict
+                  Of simple filters to apply on database rows where the key is the attribute and
+                  the value is a boolean. This is usable only when applying to measures, points, or overlays.
+
+        query_string : str
+                       A SQL query to be applied to the iterable. This is usable only when applying to measures, points, or overlays.
+
+        kwargs : dict
+                 Of keyword arguments passed to the function being applied
+
+        Examples
+        --------
+        Apply a function to the overlay table omitting those overlay rows that already have 
+        points within them and have an area less than a given threshold.
+
+        >>> query_string = 'SELECT overlay.id FROM overlay LEFT JOIN points ON ST_INTERSECTS(overlay.geom, points.geom) WHERE points.id IS NULL AND ST_AREA(overlay.geom) >= 0.0001;'
+        >>> njobs = ncg.apply('spatial.overlap.place_points_in_overlap', on='overlaps', query_string=query_string)
+
+        Apply a function to the overlay table and pass keyword arguments (kwargs) to the function.
+
+        >>> def ns(x):
+                from math import ceil
+                return ceil(round(x,1)*8)
+        >>> def ew(x):
+                from math import ceil
+                return ceil(round(x,1)*2)
+        >>> distribute_points_kwargs = {'nspts_func':ns, 'ewpts_func':ew, 'method':'classic'}
+        >>> njobs = ncg.apply('spatial.overlap.place_points_in_overlap', on='overlaps', distribute_points_kwargs=distribute_points_kwargs)
         """
 
         # Determine which obj will be called
