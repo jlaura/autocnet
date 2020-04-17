@@ -1566,10 +1566,16 @@ class NetworkCandidateGraph(CandidateGraph):
         
         filters : dict
                   Of simple filters to apply on database rows where the key is the attribute and
-                  the value is a boolean. This is usable only when applying to measures, points, or overlays.
+                  the value used to check equivalency (e.g., attribute == value). 
+                  This is usable only when applying to measures, points, or overlays.
+                  Filters can not be used with a query_string. Filters are included as a convenience 
+                  and are really only usable for simple equivalency checks.
 
         query_string : str
-                       A SQL query to be applied to the iterable. This is usable only when applying to measures, points, or overlays.
+                       A SQL query to be applied to the iterable.
+                       This is usable only when applying to measures, points, or overlays.
+                       The query_string can not be used with a filter and is appropriate for
+                       any queries. 
 
         kwargs : dict
                  Of keyword arguments passed to the function being applied
@@ -1579,7 +1585,9 @@ class NetworkCandidateGraph(CandidateGraph):
         Apply a function to the overlay table omitting those overlay rows that already have 
         points within them and have an area less than a given threshold.
 
-        >>> query_string = 'SELECT overlay.id FROM overlay LEFT JOIN points ON ST_INTERSECTS(overlay.geom, points.geom) WHERE points.id IS NULL AND ST_AREA(overlay.geom) >= 0.0001;'
+        >>> query_string = 'SELECT overlay.id FROM overlay LEFT JOIN\
+            points ON ST_INTERSECTS(overlay.geom, points.geom) WHERE\
+                points.id IS NULL AND ST_AREA(overlay.geom) >= 0.0001;'
         >>> njobs = ncg.apply('spatial.overlap.place_points_in_overlap', on='overlaps', query_string=query_string)
 
         Apply a function to the overlay table and pass keyword arguments (kwargs) to the function.
@@ -1591,7 +1599,8 @@ class NetworkCandidateGraph(CandidateGraph):
                 from math import ceil
                 return ceil(round(x,1)*2)
         >>> distribute_points_kwargs = {'nspts_func':ns, 'ewpts_func':ew, 'method':'classic'}
-        >>> njobs = ncg.apply('spatial.overlap.place_points_in_overlap', on='overlaps', distribute_points_kwargs=distribute_points_kwargs)
+        >>> njobs = ncg.apply('spatial.overlap.place_points_in_overlap',\
+            on='overlaps', distribute_points_kwargs=distribute_points_kwargs)
         """
 
         # Determine which obj will be called
