@@ -21,6 +21,7 @@ from shapely.geometry import Point
 from autocnet.transformation.spatial import reproject
 from autocnet.utils.serializers import JsonEncoder
 
+
 Base = declarative_base()
 
 class BaseMixin(object):
@@ -401,6 +402,18 @@ def try_db_creation(engine, config):
     if not database_exists(engine.url):
         create_database(engine.url, template='template_postgis')  # This is a hardcode to the local template
 
+    # Create the schema
+    schema_name = 'foo' # config['database']['schema']
+    if not engine.dialect.has_schema(engine, schema_name):
+        engine.execute(sqlalchemy.schema.CreateSchema(schema_name))
+    
+    meta = sqlalchemy.MetaData(schema=schema_name)
+    
+    # Set the schema for the table objs
+    for cls in [Measures, Overlay, Edges, Costs, Matches, Cameras, Points, 
+                Images, Keypoints]:
+        setattr(getattr(cls, '__table__'), 'schema', schema_name)
+
     # Trigger that watches for points that should be active/inactive
     # based on the point count.
     if not engine.dialect.has_table(engine, "points"):
@@ -423,6 +436,8 @@ def try_db_creation(engine, config):
     Points.semiminor_rad = spatial['semiminor_rad']
     for cls in [Points, Overlay, Images, Keypoints, Matches]:
         setattr(cls, 'latitudinal_srid', latitudinal_srid)
+
+
 
     # If the table does not exist, this will create it. This is used in case a
     # user has manually dropped a table so that the project is not wrecked.
