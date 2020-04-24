@@ -2045,6 +2045,16 @@ class NetworkCandidateGraph(CandidateGraph):
         return networkobj
     
     @property
+    def footprint(self):
+        """
+        Returns the footprint created by merging all of the valid images in the graph 
+        """
+        with self.session_scope() as session:
+            # Have to grab index 0 because the res is a tuple (geom, )
+            res = session.query(geoalchemy2.functions.ST_AsText(geoalchemy2.functions.ST_Union(Images.geom))).one()[0]
+        return shapely.wkt.loads(res)
+    
+    @property
     def measures(self):
         df = pd.read_sql_table('measures', con=self.engine)
         return df
