@@ -24,6 +24,7 @@ import shapely.ops
 from plio.io.io_controlnetwork import to_isis, from_isis
 from plio.io import io_hdf, io_json
 from plio.utils import utils as io_utils
+from plio.utils import covariance
 from plio.io.io_gdal import GeoDataset
 from plio.io.isis_serial_number import generate_serial_number
 from plio.io import io_controlnetwork as cnet
@@ -1661,7 +1662,13 @@ class NetworkCandidateGraph(CandidateGraph):
         if msg['success'] == True:
             return
 
-    def to_isis(self, path, flistpath=None,sql = """
+    def to_isis(self, 
+                path, 
+                flistpath=None, 
+                latsigma=10,
+                lonsigma=10,
+                radsigma=15,
+                sql = """
 SELECT measures."pointid",
         points."pointType",
         points."apriori",
@@ -1728,6 +1735,21 @@ ORDER BY measures."pointid", measures."id";
         df['adjustedY'] = 0
         df['adjustedZ'] = 0
 
+        def compute_covar(row, latsigma, lonsigma, radsigma, radius):
+            """
+            Compute the covariance matrices for constrained or fixed points.
+            """
+            geom = shapely.wkt.loads(row.geom)
+            covar = covariance.compute_covariance(geom.y, 
+                                                  geom.x, 
+                                                  radius, 
+                                                  latsigma=latsigma, 
+                                                  lonsigma=lonsigma, 
+                                                  radsigma=radsigma, 
+                                                  semimajor_axis=None)
+            return covar
+            
+        radius = self.config['spatial']['semimajor_rad']
         #only populate the new columns for ground points. Otherwise, isis will
         #recalculate the control point lat/lon from control measures which where
         #"massaged" by the phase and template matcher.
@@ -1741,6 +1763,7 @@ ORDER BY measures."pointid", measures."id";
                 row['adjustedX'] = adjusted_geom.x
                 row['adjustedY'] = adjusted_geom.y
                 row['adjustedZ'] = adjusted_geom.z
+                row['aprioriCovar'] = compute_covar(row, latsigma, lonsigma, radsigma, radius)
                 df.iloc[i] = row
 
         if flistpath is None:
