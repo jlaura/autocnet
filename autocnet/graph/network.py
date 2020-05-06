@@ -16,6 +16,7 @@ from redis import StrictRedis
 import shapely
 
 import geoalchemy2
+import sqlalchemy
 from sqlalchemy.ext.declarative.api import DeclarativeMeta
 import shapely.affinity
 import shapely.geometry
@@ -28,6 +29,7 @@ from plio.utils import utils as io_utils
 from plio.io.io_gdal import GeoDataset
 from plio.io.isis_serial_number import generate_serial_number
 from plio.io import io_controlnetwork as cnet
+from plio.utils import covariance
 
 
 from plurmy import Slurm
@@ -1804,6 +1806,21 @@ class NetworkCandidateGraph(CandidateGraph):
         obj._execute_sql(compute_overlaps_sql) 
         return obj
 
+    def _compute_overlaps(self):
+        """
+        Compute or re-compute the overlapping geometries in the Overlay
+        table. This method is non-destructive. Therefore, multiple runs
+        will result in duplicate overlay geometries with differing primay keys.
+        """
+        # if the db is inside a schema, prepend the query with
+        # the db schema information.
+        db_config = self.config['database']
+        schema = db_config.get('schema', '')
+        if schema:
+            schema += '.'
+        query = compute_overlaps_sql.format(schema)
+        self._execute_sql(query)
+
     def copy_images(self, newdir):
         """
         Copy images from a given directory into a new directory and
@@ -1902,7 +1919,7 @@ class NetworkCandidateGraph(CandidateGraph):
         # Create the graph, copy the images, and compute the overlaps
         self.copy_images(path)
         self.from_database()
-        self._execute_sql(compute_overlaps_sql)
+        self._compute_overlaps()
 
     def from_database(self, query_string='SELECT * FROM public.images'):
         """
@@ -2121,6 +2138,26 @@ class NetworkCandidateGraph(CandidateGraph):
         job_counter = len(groups.items())
         submitter.submit(array='1-{}'.format(job_counter))
         return job_counter
+
+    @property
+    def schema(self):
+        dbconfig = self.config['database']
+        return dbconfig.get('schema', '')
+
+    def _table_as_df(self, table):
+        return pd.read_sql_table(table, self.engine, schema=self.schema)
+
+    @property
+    def images(self):
+        return self._table_as_df('images')
+
+    @property
+    def points(self):
+        return self._table_as_df('points')
+    
+    @property
+    def measures(self):
+        return self._table_as_df('measures')
 
     def subpixel_register_points(self, **kwargs):
         subpixel.subpixel_register_points(self.Session, **kwargs)

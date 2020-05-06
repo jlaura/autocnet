@@ -37,6 +37,7 @@ def new_connection(dbconfig):
     engine = sqlalchemy.create_engine(db_uri,
                 poolclass=sqlalchemy.pool.NullPool,
                 connect_args={"application_name":f"AutoCNet_{hostname}"},
+                execution_options={'schema_translate_map':{'dynamic' : dbconfig['schema']}},
                 isolation_level="AUTOCOMMIT")
     Session = orm.sessionmaker(bind=engine, autocommit=False)
     return Session, engine

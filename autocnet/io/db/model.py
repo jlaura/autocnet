@@ -25,6 +25,9 @@ from autocnet.utils.serializers import JsonEncoder
 Base = declarative_base()
 
 class BaseMixin(object):
+
+    __table_args__ = {'schema':'dynamic'}
+
     @classmethod
     def create(cls, session, **kw):
         obj = cls(**kw)
@@ -179,6 +182,7 @@ class Cameras(BaseMixin, Base):
 
 class Images(BaseMixin, Base):
     __tablename__ = 'images'
+
     latitudinal_srid = -1
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String)
@@ -276,6 +280,7 @@ class PointType(enum.IntEnum):
 
 class Points(BaseMixin, Base):
     __tablename__ = 'points'
+
     latitudinal_srid = -1
     rectangular_srid = -1
     semimajor_rad = 1
@@ -403,17 +408,17 @@ def try_db_creation(engine, config):
         create_database(engine.url, template='template_postgis')  # This is a hardcode to the local template
 
     # Create the schema
-    schema_name = 'foo' # config['database']['schema']
+    schema_name = config['database']['schema']
     if not engine.dialect.has_schema(engine, schema_name):
         engine.execute(sqlalchemy.schema.CreateSchema(schema_name))
     
-    meta = sqlalchemy.MetaData(schema=schema_name)
+    #meta = sqlalchemy.MetaData(schema=schema_name)
     
-    # Set the schema for the table objs
+    """# Set the schema for the table objs
     for cls in [Measures, Overlay, Edges, Costs, Matches, Cameras, Points, 
                 Images, Keypoints]:
-        setattr(getattr(cls, '__table__'), 'schema', schema_name)
-
+        setattr(getattr(cls, '__table__'), 'schema', schema_name)"""
+    
     # Trigger that watches for points that should be active/inactive
     # based on the point count.
     if not engine.dialect.has_table(engine, "points"):
@@ -437,7 +442,7 @@ def try_db_creation(engine, config):
     for cls in [Points, Overlay, Images, Keypoints, Matches]:
         setattr(cls, 'latitudinal_srid', latitudinal_srid)
 
-
+    Base.metadata.create_all(engine)
 
     # If the table does not exist, this will create it. This is used in case a
     # user has manually dropped a table so that the project is not wrecked.

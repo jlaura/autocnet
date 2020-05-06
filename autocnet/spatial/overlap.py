@@ -27,16 +27,16 @@ WITH intersectiongeom AS
    SELECT ST_Polygonize(the_geom) AS the_geom FROM (
      SELECT ST_Union(the_geom) AS the_geom FROM (
      SELECT ST_ExteriorRing((ST_DUMP(geom)).geom) AS the_geom
-       FROM images WHERE images.geom IS NOT NULL) AS lines
+       FROM {0}images WHERE {0}images.geom IS NOT NULL) AS lines
   ) AS noded_lines))),
 iid AS (
  SELECT images.id, intersectiongeom.geom AS geom
-    FROM images, intersectiongeom
-    WHERE images.geom is NOT NULL AND
-    ST_INTERSECTS(intersectiongeom.geom, images.geom) AND
-    ST_AREA(ST_INTERSECTION(intersectiongeom.geom, images.geom)) > 0.000001
+    FROM {0}images, intersectiongeom
+    WHERE {0}images.geom is NOT NULL AND
+    ST_INTERSECTS(intersectiongeom.geom, {0}images.geom) AND
+    ST_AREA(ST_INTERSECTION(intersectiongeom.geom, {0}images.geom)) > 0.000001
 )
-INSERT INTO overlay(intersections, geom) SELECT row.intersections, row.geom FROM
+INSERT INTO {0}overlay(intersections, geom) SELECT row.intersections, row.geom FROM
 (SELECT iid.geom, array_agg(iid.id) AS intersections
   FROM iid GROUP BY iid.geom) AS row WHERE array_length(intersections, 1) > 1;
 """
