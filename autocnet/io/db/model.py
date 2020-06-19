@@ -8,10 +8,12 @@ from sqlalchemy import (Column, String, Integer, Float, \
                         UniqueConstraint, event)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship, backref
+from sqlalchemy.orm.collections import InstrumentedList
 from sqlalchemy_utils import database_exists, create_database
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.ext.hybrid import hybrid_property
 
+import geoalchemy2
 from geoalchemy2 import Geometry
 from geoalchemy2.shape import from_shape, to_shape
 
@@ -41,6 +43,25 @@ class BaseMixin(object):
         session.add_all(iterable)
         session.commit()
         session.close()
+
+    def to_dict(self):
+        dct = {}
+        for field, value in self.__dict__.items():
+            
+            if field == '_sa_instance_state':
+                continue
+            if isinstance(value, Base):
+                dct[field] = value.to_dict()
+            elif isinstance(value, InstrumentedList):
+                dct[field] = [v.to_dict() for v in value]
+            elif isinstance(value, geoalchemy2.elements.WKBElement) and field=='_geom':
+                dct[field] = f'SRID={self.latitudinal_srid};{to_shape(value).wkt}'
+            elif isinstance(value, geoalchemy2.elements.WKBElement):
+                dct[field] = f'SRID={self.rectangular_srid};{to_shape(value).wkt}'
+            else:
+                dct[field] = value
+
+        return dct
 
 class IntEnum(TypeDecorator):
     """
@@ -105,7 +126,7 @@ class Keypoints(BaseMixin, Base):
     __tablename__ = 'keypoints'
     latitudinal_srid = -1
     id = Column(Integer, primary_key=True, autoincrement=True)
-    image_id = Column(Integer, ForeignKey("images.id", ondelete="CASCADE"))
+    image_id = Column(Integer, ForeignKey("dynamic.images.id", ondelete="CASCADE"))
     convex_hull_image = Column(Geometry('POLYGON'))
     convex_hull_latlon = Column(Geometry('POLYGON', srid=latitudinal_srid))
     path = Column(String)
@@ -135,7 +156,7 @@ class Edges(BaseMixin, Base):
 
 class Costs(BaseMixin, Base):
     __tablename__ = 'costs'
-    match_id = Column(Integer, ForeignKey("matches.id", ondelete="CASCADE"), primary_key=True)
+    match_id = Column(Integer, ForeignKey("dynamic.matches.id", ondelete="CASCADE"), primary_key=True)
     _cost = Column(JSONB)
 
 class Matches(BaseMixin, Base):
@@ -176,7 +197,7 @@ class Matches(BaseMixin, Base):
 class Cameras(BaseMixin, Base):
     __tablename__ = 'cameras'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    image_id = Column(Integer, ForeignKey("images.id", ondelete="CASCADE"), unique=True)
+    image_id = Column(Integer, ForeignKey("dynamic.images.id", ondelete="CASCADE"), unique=True)
     camera = Column(Json())
     camtype = Column(String)
 
@@ -195,7 +216,7 @@ class Images(BaseMixin, Base):
     #footprint_bodyfixed = Column(Geometry('POLYGON',dimension=3))
 
     # Relationships
-    keypoints = relationship(Keypoints, passive_deletes='all', backref="images", uselist=False)
+    keypoints = relationship("Keypoints", passive_deletes='all', backref="images", uselist=False)
     cameras = relationship(Cameras, passive_deletes='all', backref='images', uselist=False)
     measures = relationship("Measures")
 
@@ -269,7 +290,6 @@ class Overlay(BaseMixin, Base):
         session.close()
         return res
 
-
 class PointType(enum.IntEnum):
     """
     Enum to enforce point type for ISIS control networks
@@ -289,7 +309,7 @@ class Points(BaseMixin, Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     _pointtype = Column("pointType", IntEnum(PointType), nullable=False)  # 2, 3, 4 - Could be an enum in the future, map str to int in a decorator
     identifier = Column(String, unique=True)
-    overlapid = Column(Integer, ForeignKey('overlay.id'))
+    overlapid = Column(Integer, ForeignKey('dynamic.overlay.id'))
     _geom = Column("geom", Geometry('POINT', srid=latitudinal_srid, dimension=2, spatial_index=True))
     cam_type = Column(String)
     ignore = Column("pointIgnore", Boolean, default=False)
@@ -367,8 +387,8 @@ class MeasureType(enum.IntEnum):
 class Measures(BaseMixin, Base):
     __tablename__ = 'measures'
     id = Column(Integer,primary_key=True, autoincrement=True)
-    pointid = Column(Integer, ForeignKey('points.id'), nullable=False)
-    imageid = Column(Integer, ForeignKey('images.id'))
+    pointid = Column(Integer, ForeignKey('dynamic.points.id'), nullable=False)
+    imageid = Column(Integer, ForeignKey('dynamic.images.id'))
     serial = Column("serialnumber", String, nullable=False)
     _measuretype = Column("measureType", IntEnum(MeasureType), nullable=False)  # [0,3]  # Enum as above
     ignore = Column("measureIgnore", Boolean, default=False)
@@ -389,6 +409,8 @@ class Measures(BaseMixin, Base):
     linesigma = Column(Float)
     weight = Column(Float, default=None)
     rms = Column(Float)
+
+    point = relationship("Points")
 
     @hybrid_property
     def measuretype(self):
@@ -442,7 +464,7 @@ def try_db_creation(engine, config):
     for cls in [Points, Overlay, Images, Keypoints, Matches]:
         setattr(cls, 'latitudinal_srid', latitudinal_srid)
 
-    Base.metadata.create_all(engine)
+
 
     # If the table does not exist, this will create it. This is used in case a
     # user has manually dropped a table so that the project is not wrecked.

@@ -4,6 +4,9 @@ import sqlalchemy
 from sqlalchemy import create_engine, pool, orm
 from sqlalchemy.orm import create_session, scoped_session, sessionmaker
 
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.sql.expression import Insert
+
 import os
 import socket
 import warnings
@@ -41,3 +44,7 @@ def new_connection(dbconfig):
                 isolation_level="AUTOCOMMIT")
     Session = orm.sessionmaker(bind=engine, autocommit=False)
     return Session, engine
+
+@compiles(Insert)
+def prefix_inserts(insert, compiler, **kw):
+    return compiler.visit_insert(insert, **kw) + " ON CONFLICT DO NOTHING"

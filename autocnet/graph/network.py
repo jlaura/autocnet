@@ -18,6 +18,7 @@ import shapely
 import geoalchemy2
 import sqlalchemy
 from sqlalchemy.ext.declarative.api import DeclarativeMeta
+from sqlalchemy_utils import database_exists
 import shapely.affinity
 import shapely.geometry
 import shapely.wkt as swkt
@@ -1422,7 +1423,10 @@ class NetworkCandidateGraph(CandidateGraph):
         db = self.config['database']
         self.Session, self.engine = new_connection(self.config['database'])
 
-        # Attempt to create the database (if it does not exist)
+        # If the db does not exist and/or the schema does not exist, create them
+        #if not database_exists(self.engine.url) or\
+        #   not self.engine.dialect.has_schema(self.engine, self.schema):
+        
         try_db_creation(self.engine, self.config)
 
     def _setup_queues(self):
