@@ -1734,6 +1734,7 @@ ORDER BY measures."pointid", measures."id";
         df['adjustedX'] = 0
         df['adjustedY'] = 0
         df['adjustedZ'] = 0
+        df['aprioriCovar'] = [[] for _ in range(len(df))]
 
         def compute_covar(row, latsigma, lonsigma, radsigma, radius):
             """
