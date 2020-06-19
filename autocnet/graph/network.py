@@ -1736,11 +1736,10 @@ ORDER BY measures."pointid", measures."id";
         df['adjustedZ'] = 0
         df['aprioriCovar'] = [[] for _ in range(len(df))]
 
-        def compute_covar(row, latsigma, lonsigma, radsigma, radius):
+        def compute_covar(geom, latsigma, lonsigma, radsigma, radius):
             """
             Compute the covariance matrices for constrained or fixed points.
             """
-            geom = shapely.wkt.loads(row.geom)
             covar = covariance.compute_covariance(geom.y, 
                                                   geom.x, 
                                                   radius, 
@@ -1764,7 +1763,7 @@ ORDER BY measures."pointid", measures."id";
                 row['adjustedX'] = adjusted_geom.x
                 row['adjustedY'] = adjusted_geom.y
                 row['adjustedZ'] = adjusted_geom.z
-                row['aprioriCovar'] = compute_covar(row, latsigma, lonsigma, radsigma, radius)
+                row['aprioriCovar'] = compute_covar(adjusted_geom, latsigma, lonsigma, radsigma, radius)
                 df.iloc[i] = row
 
         if flistpath is None:
