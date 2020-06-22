@@ -1,3 +1,4 @@
+import os
 import pytest
 
 import pandas as pd
@@ -46,3 +47,13 @@ def test_place_points_from_cnet(session, cnet, image_data, expected_npoints, ncg
     assert len(resp.all()) == expected_npoints
     assert len(resp.all()) == cnet.shape[0]
     session.close()
+
+def test_to_isis(db_controlnetwork, ncg, node_a, node_b, tmpdir):
+    ncg.add_edge(0,1)
+    ncg.nodes[0]['data'] = node_a
+    ncg.nodes[1]['data'] = node_b
+
+    outpath = tmpdir.join('outnet.net')
+    ncg.to_isis(outpath)
+
+    assert os.path.exists(outpath)

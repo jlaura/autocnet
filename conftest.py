@@ -10,6 +10,7 @@ from autocnet.control import control
 from autocnet.graph.network import CandidateGraph, NetworkCandidateGraph
 from autocnet.graph import edge, node
 from autocnet.graph.node import Node
+from autocnet.io.db import model
 
 
 from plio.io.io_gdal import GeoDataset
@@ -70,8 +71,8 @@ def default_configuration():
                   'username': 'postgres',
                   'password': 'NotTheDefault',
                   'host': 'localhost',
-                  'port': 5432,
-                  'pgbouncer_port': 5432,
+                  'port': 5433,
+                  'pgbouncer_port': 5433,
                   'name': 'travis_ci_test',
                   'timeout': 500},
               'pfeffernusse': {'url': ''},
@@ -207,6 +208,31 @@ def session(tables, request, ncg):
     request.addfinalizer(cleanup)
 
     return session
+
+@pytest.fixture
+def db_controlnetwork(session):
+
+    # Create the images
+    i1 = {'id':0, 'serial':'foo'}
+    i2 = {'id':1, 'serial':'bar'}
+    for i in [i1, i2]:
+        model.Images.create(session, **i)
+
+    for i, j in enumerate([0,2,4]):
+        ptype = 2
+        if j == 4:
+            ptype=3  # Ground
+        model.Points.create(session,
+                            id=i, 
+                            _pointtype=ptype, 
+                            measures=[model.Measures(id=k+j,
+                                                    imageid=k, 
+                                                    serial='None', 
+                                                    _measuretype=3, 
+                                                    sample=k, 
+                                                    line=k,
+                                                    aprioriline=k,
+                                                    apriorisample=k) for k in range(2)]) 
 
 """@pytest.fixture(scope='session')
 def bad_controlnetwork(controlnetwork_data):
