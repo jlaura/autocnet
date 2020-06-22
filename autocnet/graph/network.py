@@ -1690,7 +1690,6 @@ class NetworkCandidateGraph(CandidateGraph):
         df.rename(columns={'pointtype':'pointType',
                            'measuretype':'measureType'},
                            inplace=True)
-        pd.set_option('display.max_columns', None)
         cnet.to_isis(df, path, targetname=target)
         cnet.write_filelist(fpaths, path=flistpath)
 
@@ -1866,7 +1865,7 @@ class NetworkCandidateGraph(CandidateGraph):
         self.copy_images(path)
         self.from_database()
         self._execute_sql(compute_overlaps_sql)
-        
+
     def from_database(self, query_string='SELECT * FROM public.images'):
         """
         This is a constructor that takes the results from an arbitrary query string,
