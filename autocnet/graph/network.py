@@ -1764,23 +1764,8 @@ class NetworkCandidateGraph(CandidateGraph):
 
         obj = cls.from_database()
         # Execute the computation to compute overlapping geometries
-        obj._compute_overlaps()
+        obj._execute_sql(compute_overlaps_sql) 
         return obj
-
-    def _compute_overlaps(self):
-        """
-        Compute or re-compute the overlapping geometries in the Overlay
-        table. This method is non-destructive. Therefore, multiple runs
-        will result in duplicate overlay geometries with differing primay keys.
-        """
-        # if the db is inside a schema, prepend the query with
-        # the db schema information.
-        db_config = self.config['database']
-        schema = db_config.get('schema', '')
-        if schema:
-            schema += '.'
-        query = compute_overlaps_sql.format(schema)
-        self._execute_sql(query)
 
     def copy_images(self, newdir):
         """
@@ -1880,8 +1865,8 @@ class NetworkCandidateGraph(CandidateGraph):
         # Create the graph, copy the images, and compute the overlaps
         self.copy_images(path)
         self.from_database()
-        self._compute_overlaps()
-
+        self._execute_sql(compute_overlaps_sql)
+        
     def from_database(self, query_string='SELECT * FROM public.images'):
         """
         This is a constructor that takes the results from an arbitrary query string,
@@ -2020,7 +2005,7 @@ class NetworkCandidateGraph(CandidateGraph):
         """
         networkobj = cls.from_filelist(filelist)
         networkobj.place_points_from_cnet(cnet)
-        return networkobj
+        return networkobjgit a
     
     @property
     def measures(self):
