@@ -71,7 +71,7 @@ def default_configuration():
                   'username': 'postgres',
                   'password': 'NotTheDefault',
                   'host': 'localhost',
-                  'port': 5432,
+                  'port': 5432, 
                   'pgbouncer_port': 5432,
                   'name': 'travis_ci_test',
                   'timeout': 500},
