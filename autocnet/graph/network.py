@@ -1419,27 +1419,6 @@ class NetworkCandidateGraph(CandidateGraph):
                                        db=0)
         self.processing_queue = conf['processing_queue']
 
-    @contextmanager
-    def session_scope(self):
-        """
-        Provide a transactional scope around a series of operations.
-        """
-        session = self.Session()
-        try:
-            db_config = self.config['database']
-            schema = db_config.get('schema', '')
-            if schema:
-                session.connection(execution_options={
-                    "schema_translate_map": {"dynamic": schema}})
-            print(self.engine.get_execution_options())
-            yield session
-            session.commit()
-        except:
-            session.rollback()
-            raise
-        finally:
-            session.close()
-
     def empty_queues(self):
         """
         Delete all messages from the redis queue. This a convenience method.
@@ -2042,18 +2021,6 @@ class NetworkCandidateGraph(CandidateGraph):
         networkobj = cls.from_filelist(filelist)
         networkobj.place_points_from_cnet(cnet)
         return networkobj
-
-    @property
-    def footprint(self):
-        """
-        Returns the footprint created by merging all of the valid images in the graph 
-        """
-        with self.session_scope() as session:
-            # Have to grab index 0 because the res is a tuple (geom, )
-            q = session.query(geoalchemy2.functions.ST_AsText(geoalchemy2.functions.ST_Union(Images.geom)))
-            print(str(q))
-            #res = session.query(geoalchemy2.functions.ST_AsText(geoalchemy2.functions.ST_Union(Images.geom))).one()[0]
-        #return shapely.wkt.loads(res)
     
     @property
     def measures(self):
