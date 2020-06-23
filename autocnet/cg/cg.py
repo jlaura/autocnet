@@ -7,6 +7,7 @@ import networkx as nx
 import geopandas as gpd
 import ogr
 
+from skimage import transform as tf
 from scipy.spatial import ConvexHull
 from scipy.spatial import Voronoi
 import shapely.geometry
@@ -456,43 +457,31 @@ def distribute_points_new(geom, nspts, ewpts, Session):
     valid : list
             of point coordinates in the form [(x1,y1), (x2,y2), ..., (xn, yn)]
     """
-    geom_coords = np.column_stack(geom.exterior.xy)
-
     coords = np.array(list(zip(*geom.envelope.exterior.xy))[:-1])
-
     ll = coords[0]
     lr = coords[1]
     ur = coords[2]
     ul = coords[3]
 
-    # Find the points nearest the ur and ll aligned // with eastern side of ground_poly
-    elon, elat = find_side('east', Session)
-    ur_actual = np.array(two_point_extrapolate(ur[1], elat, elon))[::-1]
-    lr_actual = np.array(two_point_extrapolate(lr[1],elat, elon))[::-1]
+    rr_coords = np.array(list(zip(*geom.minimum_rotated_rectangle.exterior.xy))[:-1])
+    w = min([i[0] for i in rr_coords])
+    s = min([i[1] for i in rr_coords])
+    swid = nearest([w, s], rr_coords)
+    rr_coords = np.vstack([rr_coords[swid:], rr_coords[0:swid]]) # reorder to match envelope/coords order
 
-    wlon, wlat = find_side('west', Session)
-    ul_actual = np.array(two_point_extrapolate(ul[1], wlat, wlon))[::-1]
-    ll_actual = np.array(two_point_extrapolate(ll[1], wlat, wlon))[::-1]
+    x = np.linspace(ul[0], ur[0], ewpts+2)[1:-1]
+    y = np.linspace(ul[1], ll[1], nspts+2)[1:-1]
 
-    dt = (ur_actual-ul_actual)*0.025 #some offset to make sure endpoints are within geom
-    db = (lr_actual-ll_actual)*0.025
-    newtop = create_points_along_line(ul_actual+dt, ur_actual-dt, ewpts)
-    newbot = create_points_along_line(ll_actual+db, lr_actual-db, ewpts)
+    grid = np.transpose([np.tile(x, len(y)), np.repeat(y, len(x))])
 
-    points = []
-    for i in range(len(newtop)):
-        top = newtop[i]
-        bot = newbot[i]
-
-        line_of_points = create_points_along_line(top, bot, nspts)
-        points.append(line_of_points)
-
-    if len(points) < 1:
+    if len(grid) < 1:
         return []
 
-    points = np.vstack(points)
+    affine = tf.estimate_transform('affine', coords, rr_coords)
+    rr_grid = affine(grid)
+
     # Perform a spatial intersection check to eject points that are not valid
-    valid = [p for p in points if xy_in_polygon(p[0], p[1], geom)]
+    valid = [p for p in rr_grid if xy_in_polygon(p[0], p[1], geom)]
     return valid
 
 def distribute_points_in_geom(geom, method="classic",
