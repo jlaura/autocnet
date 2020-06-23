@@ -1671,7 +1671,38 @@ class NetworkCandidateGraph(CandidateGraph):
                 lonsigma=10,
                 radsigma=15,
                 **db_kwargs):
-                
+        """
+        Write a NetworkCandidateGraph to an ISIS control network
+
+        Parameters
+        ----------
+        path : str
+               Outpath to write the control network
+
+        flishpath : str
+                    Outpath to write the associated file list. If None (default), 
+                    the file list is written alongside the control network
+        
+        latsigma : int/float
+               The estimated sigma (error) in the latitude direction
+
+        lonsigma : int/float
+                The estimated sigma (error) in the longitude direction
+
+        radsigma : int/float
+                The estimated sigma (error) in the radius direction
+
+        radius : int/float
+                The body semimajor radius
+
+        db_kwargs : dict
+                    Kwargs that are passed to the io.db.controlnetwork.db_to_df function
+
+        Returns
+        -------
+        None
+        
+        """        
         # Read the cnet from the db
         df = io_controlnetwork.db_to_df(self.engine, **db_kwargs)
         

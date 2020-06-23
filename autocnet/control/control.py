@@ -11,11 +11,27 @@ from plio.io.io_controlnetwork import to_isis, write_filelist
 from plio.utils import covariance
 
 def compute_covariance(df, latsigma, lonsigma, radsigma, radius):
+    """
+    Compute the covariance matrices for constrained or fixed points.
 
+    Parameters
+    ----------
+    df : pd.DataFrame
+         with columns pointtype, adjustedY, and adjustedX
+
+    latsigma : int/float
+               The estimated sigma (error) in the latitude direction
+
+    lonsigma : int/float
+               The estimated sigma (error) in the longitude direction
+
+    radsigma : int/float
+               The estimated sigma (error) in the radius direction
+
+    radius : int/float
+             The body semimajor radius
+    """
     def compute_covar(row, latsigma, lonsigma, radsigma, radius):
-        """
-        Compute the covariance matrices for constrained or fixed points.
-        """
         if row['pointtype'] == 3 or row['pointtype'] == 4:
             return covariance.compute_covariance(row['adjustedY'], 
                                                     row['adjustedX'], 
