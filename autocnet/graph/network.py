@@ -28,7 +28,7 @@ from plio.utils import utils as io_utils
 from plio.io.io_gdal import GeoDataset
 from plio.io.isis_serial_number import generate_serial_number
 from plio.io import io_controlnetwork as cnet
-from plio.utils import covariance
+
 
 from plurmy import Slurm
 
@@ -1392,6 +1392,21 @@ class NetworkCandidateGraph(CandidateGraph):
         # is the best solution I think. I don't want to pass the DEM around
         # for the sensor calls.
         self._setup_dem()
+    
+    @contextmanager
+    def session_scope(self):
+     """
+     Provide a transactional scope around a series of operations.
+     """
+     session = self.Session()
+     try:
+         yield session
+         session.commit()
+     except:
+         session.rollback()
+         raise
+     finally:
+         session.close()
 
     def _setup_dem(self):
         spatial = self.config['spatial']
@@ -1658,26 +1673,14 @@ class NetworkCandidateGraph(CandidateGraph):
                 **db_kwargs):
                 
         # Read the cnet from the db
-        df  = io_controlnetwork.db_to_df(self.engine, **db_kwargs)
-        def compute_covar(row, latsigma, lonsigma, radsigma, radius):
-            """
-            Compute the covariance matrices for constrained or fixed points.
-            """
-            covar = covariance.compute_covariance(row['adjustedY'], 
-                                                  row['adjustedX'], 
-                                                  radius, 
-                                                  latsigma=latsigma, 
-                                                  lonsigma=lonsigma, 
-                                                  radsigma=radsigma, 
-                                                  semimajor_axis=radius)
-            return covar
-        radius = self.config['spatial']['semimajor_rad']
-        df['aprioriCovar'] = df.apply(compute_covar, 
-                                      axis=1, 
-                                      args=(latsigma,
-                                      lonsigma,
-                                      radsigma,
-                                      radius))
+        df = io_controlnetwork.db_to_df(self.engine, **db_kwargs)
+        
+        # Add the covariance matrices to ground measures
+        df = control.compute_covariance(df, 
+                                        latsigma, 
+                                        lonsigma, 
+                                        radsigma, 
+                                        self.config['spatial']['semimajor_rad'])
 
         if flistpath is None:
             flistpath = os.path.splitext(path)[0] + '.lis'

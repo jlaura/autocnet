@@ -48,9 +48,6 @@ ORDER BY measures."pointid", measures."id";
         sql : str
               The sql query to execute in the database.
         """
-
-
-
         df = pd.read_sql(sql, engine)
 
         # measures.id DB column was read in to ensure the proper ordering of DF
@@ -85,5 +82,6 @@ ORDER BY measures."pointid", measures."id";
                     row['adjustedX'] = adjusted_geom.x
                     row['adjustedY'] = adjusted_geom.y
                     row['adjustedZ'] = adjusted_geom.z
-
+            df[i] = row
+            
         return df

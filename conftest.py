@@ -71,8 +71,8 @@ def default_configuration():
                   'username': 'postgres',
                   'password': 'NotTheDefault',
                   'host': 'localhost',
-                  'port': 5432, 
-                  'pgbouncer_port': 5432,
+                  'port': 5433, 
+                  'pgbouncer_port': 5433,
                   'name': 'travis_ci_test',
                   'timeout': 500},
               'pfeffernusse': {'url': ''},
@@ -204,7 +204,8 @@ def session(tables, request, ncg):
         # Ensure that this is the only connection to the DB
         num_con = session.execute('SELECT sum(numbackends) FROM pg_stat_database;').scalar()
         assert num_con == 1
-
+        session.close()
+        
     request.addfinalizer(cleanup)
 
     return session
@@ -233,6 +234,7 @@ def db_controlnetwork(session):
                                                     line=k,
                                                     aprioriline=k,
                                                     apriorisample=k) for k in range(2)]) 
+    session.close()
 
 """@pytest.fixture(scope='session')
 def bad_controlnetwork(controlnetwork_data):

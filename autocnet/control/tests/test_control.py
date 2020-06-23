@@ -31,6 +31,19 @@ def test_potential_overlap(controlnetwork, candidategraph):
                                  (0,), (0,)],
                                  index=[6,7,8,9,10,11]))
 
+def test_compute_covariance():
+    df = pd.DataFrame([[0,0,3], [0,0,4], [0,0,2]], columns=['adjustedY', 'adjustedX', 'pointtype'])
+    df = control.compute_covariance(df, 10, 10, 15, 100)
+    
+    def assertexists(row):
+        if row['pointtype'] > 2:
+            assert row['aprioriCovar'].sum() > 100
+        else:
+            assert row['aprioriCovar'] == []
+
+    df.apply(assertexists, axis=1)
+
+
 """
 def test_fromcandidategraph(candidategraph, controlnetwork_data):#, controlnetwork):
     matches = candidategraph.get_matches()

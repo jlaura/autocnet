@@ -8,7 +8,31 @@ from shapely.geometry import Point
 from autocnet.matcher import subpixel as sp
 
 from plio.io.io_controlnetwork import to_isis, write_filelist
+from plio.utils import covariance
 
+def compute_covariance(df, latsigma, lonsigma, radsigma, radius):
+
+    def compute_covar(row, latsigma, lonsigma, radsigma, radius):
+        """
+        Compute the covariance matrices for constrained or fixed points.
+        """
+        if row['pointtype'] == 3 or row['pointtype'] == 4:
+            return covariance.compute_covariance(row['adjustedY'], 
+                                                    row['adjustedX'], 
+                                                    radius, 
+                                                    latsigma=latsigma, 
+                                                    lonsigma=lonsigma, 
+                                                    radsigma=radsigma, 
+                                                    semimajor_axis=radius)
+        return []
+
+    df['aprioriCovar'] = df.apply(compute_covar, 
+                                  axis=1, 
+                                  args=(latsigma,
+                                  lonsigma,
+                                  radsigma,
+                                  radius))
+    return df
 
 def identify_potential_overlaps(cg, cn, overlap=True):
     """
