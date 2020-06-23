@@ -1669,12 +1669,15 @@ class NetworkCandidateGraph(CandidateGraph):
                                                   latsigma=latsigma, 
                                                   lonsigma=lonsigma, 
                                                   radsigma=radsigma, 
-                                                  semimajor_axis=None)
+                                                  semimajor_axis=radius)
             return covar
         radius = self.config['spatial']['semimajor_rad']
-        for i, row in df.iterrows():
-                row['aprioriCovar'] = compute_covar(row, latsigma, lonsigma, radsigma, radius)
-                df.iloc[i] = row
+        df['aprioriCovar'] = df.apply(compute_covar, 
+                                      axis=1, 
+                                      args=(latsigma,
+                                      lonsigma,
+                                      radsigma,
+                                      radius))
 
         if flistpath is None:
             flistpath = os.path.splitext(path)[0] + '.lis'
