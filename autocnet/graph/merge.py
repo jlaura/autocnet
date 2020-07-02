@@ -1,3 +1,4 @@
+import copy
 from itertools import combinations
 from shapely.ops import cascaded_union
 import sqlalchemy
@@ -6,6 +7,36 @@ import geoalchemy2
 
 from autocnet.io.db.model import Points
 
+
+def create_new_from_existing(source_ncg, schema_name):
+    """
+    Given a source NetworkCandidateGraph, create a destination NetworkCandidateGraph with
+    an identical table mapping into a user specified schema. This is a convenience function
+    when seeking to merge networks. This function will create a new destination network 
+    into a new schema that is structurally identical to the source_ncg.
+
+    Parameters
+    ----------
+    source_ncg : object
+                 NetworkCandidateGraph object (can be empty) that has a database config
+
+    schema_name : str
+                  A new schema name that will be created in the database associated with the 
+                  source_ncg
+
+    Returns
+    -------
+    destination_ncg : object
+                      NetworkCandidateGraph object associated with the new schema.
+    """
+    # Create the ncg for the destination to get the DB instantiated
+    destination_ncg = NetworkCandidateGraph()
+    # Have to deep copy or else we are messing with the source config dict...
+    destination_config = copy.deepcopy(source_ncg.config)  
+    # Update the schema name so that this is a new project
+    destination_config['database']['schema'] = schema_name
+    destination_ncg.config_from_dict(destination_config)
+    return destination_ncg
 
 def insert_points_notin_geom(destination_network, networks, srid=949900):
     """
@@ -110,7 +141,7 @@ def merge_overlaps(destination_network, networks):
     -------
     None  
     """
-    
+
     sql = """INSERT INTO {0}.overlay
     SELECT *
     FROM
