@@ -47,4 +47,4 @@ def new_connection(dbconfig):
 
 @compiles(Insert)
 def prefix_inserts(insert, compiler, **kw):
-    return compiler.visit_insert(insert, **kw) + " ON CONFLICT DO NOTHING"
+    return compiler.visit_insert(insert, **kw) #+ " ON CONFLICT DO NOTHING"

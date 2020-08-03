@@ -1,6 +1,8 @@
 import enum
 import json
 
+import pandas as pd
+
 import sqlalchemy
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import (Column, String, Integer, Float, \
@@ -60,9 +62,38 @@ class BaseMixin(object):
                 dct[field] = f'SRID={self.rectangular_srid};{to_shape(value).wkt}'
             else:
                 dct[field] = value
-
         return dct
+    
+    def as_df(self, engine, schema=None, geom="geom"):
+        """
+        Return a pandas DataFrame representing the whole table in the database.
 
+        Parameters
+        ----------
+        engine : obj
+                 The engine object that connects to the database
+
+        schema : str
+                 An optional schema name for a DB that supports schemas
+
+        geom : str
+               An optional name for a geometry column that is used to convert
+               from WKB to a shapely geometry object.
+        """
+        df = pd.read_sql_table(self.__tablename__, engine, schema=schema)
+        if geom in df.columns:
+            df[geom] = df[geom].apply(to_shape)
+        return df
+
+    def duplicate(self):
+        mapper = sqlalchemy.inspect(type(self))
+        
+        new_obj = type(self)()
+        for name, col in mapper.columns.items():
+            if not col.primary_key and not col.unique:
+                setattr(new_obj, name, getattr(self, name))
+        return new_obj
+ 
 class IntEnum(TypeDecorator):
     """
     Mapper for enum type to sqlalchemy and back again
@@ -372,6 +403,19 @@ class Points(BaseMixin, Base):
             v = PointType(v)
         self._pointtype = v
 
+    def duplicate(self):
+        mapper = sqlalchemy.inspect(type(self))
+        
+        new_obj = type(self)()
+        for name, col in mapper.columns.items():
+            if not col.primary_key and not col.unique:
+                setattr(new_obj, name, getattr(self, name))
+        
+        # Also copy over the measures:
+        new_measures = [m.duplicate() for m in self.measures]
+        new_obj.measures = new_measures
+        return new_obj
+
     #def subpixel_register(self, Session, pointid, **kwargs):
     #    subpixel.subpixel_register_point(args=(Session, pointid), **kwargs)
 
@@ -434,22 +478,21 @@ def try_db_creation(engine, config):
     if not engine.dialect.has_schema(engine, schema_name):
         engine.execute(sqlalchemy.schema.CreateSchema(schema_name))
     
-    #meta = sqlalchemy.MetaData(schema=schema_name)
-    
-    """# Set the schema for the table objs
+    meta = sqlalchemy.MetaData(schema=schema_name)
+    # Set the schema for the table objs
     for cls in [Measures, Overlay, Edges, Costs, Matches, Cameras, Points, 
                 Images, Keypoints]:
-        setattr(getattr(cls, '__table__'), 'schema', schema_name)"""
+        setattr(getattr(cls, '__table__'), 'schema', schema_name)
     
     # Trigger that watches for points that should be active/inactive
     # based on the point count.
     if not engine.dialect.has_table(engine, "points"):
-        event.listen(Base.metadata, 'before_create', valid_point_function)
-        event.listen(Measures.__table__, 'after_create', valid_point_trigger)
-        event.listen(Base.metadata, 'before_create', valid_geom_function)
-        event.listen(Images.__table__, 'after_create', valid_geom_trigger)
-        event.listen(Base.metadata, 'before_create', ignore_image_function)
-        event.listen(Images.__table__, 'after_create', ignore_image_trigger)
+        event.listen(Base.metadata, 'before_create', valid_point_function(schema_name))
+        event.listen(Measures.__table__, 'after_create', valid_point_trigger(schema_name))
+        event.listen(Base.metadata, 'before_create', valid_geom_function(schema_name))
+        event.listen(Images.__table__, 'after_create', valid_geom_trigger(schema_name))
+        event.listen(Base.metadata, 'before_create', ignore_image_function(schema_name))
+        event.listen(Images.__table__, 'after_create', ignore_image_trigger(schema_name))
 
     Base.metadata.bind = engine
 

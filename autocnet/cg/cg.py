@@ -8,15 +8,13 @@ import geopandas as gpd
 import ogr
 
 from skimage import transform as tf
-from scipy.spatial import ConvexHull
-from scipy.spatial import Voronoi
+from scipy.spatial import ConvexHull, Voronoi
 import shapely.geometry
 from shapely.geometry import Polygon, Point
 from shapely.affinity import scale
 from shapely import wkt
 
 from autocnet.utils import utils
-
 
 
 def two_point_extrapolate(x, xs, ys):

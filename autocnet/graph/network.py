@@ -38,7 +38,7 @@ from plurmy import Slurm
 import autocnet
 from autocnet.config_parser import parse_config
 from autocnet.cg import cg
-from autocnet.graph import markov_cluster
+from autocnet.graph import markov_cluster, merge
 from autocnet.graph.edge import Edge, NetworkEdge
 from autocnet.graph.node import Node, NetworkNode
 from autocnet.io import network as io_network
@@ -1980,6 +1980,28 @@ class NetworkCandidateGraph(CandidateGraph):
         # Add nodes that do not overlap any images
         self.__init__(adjacency, node_id_map=adjacency_lookup)
 
+    def merge(self, ncgs, **kwargs):
+        """
+        Convience wrapper around autocnet.graph.merge.merge to
+        merge two or more network candidate graphs into a single
+        shared DB. This wrapper treats this NCG as the destination
+        and merges the other networks into this network. The
+        autocnet.graph.merge.create_new_from_existing can be run to create 
+        a new, empty NCG with a table schema identical to the input ncg.
+
+        For points within a threshold (meters) that can be optionally passed
+        as a kwarg to the merge func, this method can potentially generate a 
+        high number of cluster jobs as points are merged and measures are re-
+        subpixel registered.
+
+        Parameters
+        ----------
+        ncgs : obj or list of obj
+               A single NetworkCandidateGraph or a list of NetworkCandidateGraphs
+               to merge into this NetworkCandidateGraph
+        """
+        merge.merge(self, ncgs, **kwargs)
+
     @staticmethod
     def clear_db(tables=None):
         """
@@ -2157,11 +2179,11 @@ class NetworkCandidateGraph(CandidateGraph):
 
     @property
     def points(self):
-        return self._table_as_df('points')
+        return Points().as_df(self.engine, schema=self.schema)
     
     @property
     def measures(self):
-        return self._table_as_df('measures')
+        return Measures().as_df(self.engine, schema=self.schema)
 
     def subpixel_register_points(self, **kwargs):
         subpixel.subpixel_register_points(self.Session, **kwargs)
@@ -2169,7 +2191,7 @@ class NetworkCandidateGraph(CandidateGraph):
     def subpixel_register_point(self, pointid, **kwargs):
         subpixel.subpixel_register_point(self.Session, pointid, **kwarg)
 
-    def subpixel_regiter_mearure(self, measureid, **kwargs):
+    def subpixel_regiter_measure(self, measureid, **kwargs):
         subpixel.subpixel_register_measure(self.Session, measureid, **kwargs)
 
     def propagate_control_network(self, control_net, **kwargs):

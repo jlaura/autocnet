@@ -40,3 +40,30 @@ def reproject(record, semi_major, semi_minor, source_proj, dest_proj, **kwargs):
 
     y, x, z = pyproj.transform(source_pyproj, dest_pyproj, record[0], record[1], record[2], **kwargs)
     return y, x, z
+
+def ll_to_eqc(points, semimajor, semiminor):
+    """
+    Project from Lat/Lon to Equirectangular. This func works with points
+    in 2D.
+    
+    Parameters
+    ----------
+    points : ndarray
+             (n,2) array of ppoint coordinates in form (lat, lon)
+             
+    semimajor : numeric
+                Semi-major axis of the body
+                
+    semiminor : numeric
+                Semi-minor axis of the body
+                
+    Returns
+    -------
+     : ndarray
+       (n,2) array of coordinates in meters in an equirectangular projection
+       
+    """
+    ll = f"+proj=latlon +a={semimajor} +b={semiminor}"
+    eqc = f"+proj=eqc +units=m +a={semimajor} +b={semiminor}"
+    
+    return pyproj.transform(ll, eqc, points[:,0], points[:,1])
