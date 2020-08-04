@@ -38,6 +38,20 @@ class BaseMixin(object):
         session.commit()
         session.close()
 
+    def duplicate(self):
+        """
+        Return a duplicate object that is not attached to any session. Note that
+        this method does not follow foreign key relationships.
+        """
+        mapper = sqlalchemy.inspect(type(self))
+        
+        new_obj = type(self)()
+        for name, col in mapper.columns.items():
+            if not col.primary_key and not col.unique:
+                setattr(new_obj, name, getattr(self, name))
+        return new_obj
+
+
 class IntEnum(TypeDecorator):
     """
     Mapper for enum type to sqlalchemy and back again
@@ -347,8 +361,22 @@ class Points(BaseMixin, Base):
             v = PointType(v)
         self._pointtype = v
 
-    #def subpixel_register(self, Session, pointid, **kwargs):
-    #    subpixel.subpixel_register_point(args=(Session, pointid), **kwargs)
+    def duplicate(self):
+        """
+        Duplicate the point object following foreign key relations for measures. The
+        duplicate is not attached to a session.
+        """
+        mapper = sqlalchemy.inspect(type(self))
+        
+        new_obj = type(self)()
+        for name, col in mapper.columns.items():
+            if not col.primary_key and not col.unique:
+                setattr(new_obj, name, getattr(self, name))
+        
+        # Also copy over the measures:
+        new_measures = [m.duplicate() for m in self.measures]
+        new_obj.measures = new_measures
+        return new_obj
 
 class MeasureType(enum.IntEnum):
     """
