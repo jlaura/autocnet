@@ -5,10 +5,9 @@ import sqlalchemy
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import (Column, String, Integer, Float, \
                         ForeignKey, Boolean, LargeBinary, \
-                        UniqueConstraint, event)
+                        UniqueConstraint)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship, backref
-from sqlalchemy_utils import database_exists, create_database
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.ext.hybrid import hybrid_property
 
@@ -422,42 +421,3 @@ class Measures(BaseMixin, Base):
         if isinstance(v, int):
             v = MeasureType(v)
         self._measuretype = v
-
-def try_db_creation(engine, config):
-    from autocnet.io.db.triggers import valid_point_function, valid_point_trigger, valid_geom_function, valid_geom_trigger, ignore_image_function, ignore_image_trigger
-
-    # Create the database
-    if not database_exists(engine.url):
-        create_database(engine.url, template='template_postgis')  # This is a hardcode to the local template
-
-    # Trigger that watches for points that should be active/inactive
-    # based on the point count.
-    if not engine.dialect.has_table(engine, "points"):
-        event.listen(Base.metadata, 'before_create', valid_point_function)
-        event.listen(Measures.__table__, 'after_create', valid_point_trigger)
-        event.listen(Base.metadata, 'before_create', valid_geom_function)
-        event.listen(Images.__table__, 'after_create', valid_geom_trigger)
-        event.listen(Base.metadata, 'before_create', ignore_image_function)
-        event.listen(Images.__table__, 'after_create', ignore_image_trigger)
-
-    Base.metadata.bind = engine
-
-    # Set the class attributes for the SRIDs
-    spatial = config['spatial']
-    latitudinal_srid = spatial['latitudinal_srid']
-    rectangular_srid = spatial['rectangular_srid']
-
-    Points.rectangular_srid = rectangular_srid
-    Points.semimajor_rad = spatial['semimajor_rad']
-    Points.semiminor_rad = spatial['semiminor_rad']
-    for cls in [Points, Overlay, Images, Keypoints, Matches]:
-        setattr(cls, 'latitudinal_srid', latitudinal_srid)
-
-    # If the table does not exist, this will create it. This is used in case a
-    # user has manually dropped a table so that the project is not wrecked.
-    Base.metadata.create_all(tables=[Overlay.__table__,
-                                     Edges.__table__, Costs.__table__, Matches.__table__,
-                                     Cameras.__table__, Points.__table__,
-                                     Measures.__table__, Images.__table__,
-                                     Keypoints.__table__])
-

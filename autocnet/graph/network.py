@@ -41,8 +41,8 @@ from autocnet.graph.node import Node, NetworkNode
 from autocnet.io import network as io_network
 from autocnet.io.db import controlnetwork as io_controlnetwork
 from autocnet.io.db.model import (Images, Keypoints, Matches, Cameras, Points,
-                                  Base, Overlay, Edges, Costs, Measures, JsonEncoder,
-                                  try_db_creation)
+                                  Base, Overlay, Edges, Costs, Measures, JsonEncoder)
+from autocnet.io.db.creation import try_db_creation
 from autocnet.io.db.connection import new_connection, Parent
 from autocnet.matcher import subpixel
 from autocnet.matcher import cross_instrument_matcher as cim
