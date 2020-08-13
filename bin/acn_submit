@@ -43,17 +43,21 @@ def _instantiate_row(msg, ncg):
     # Get the dict mapping iterable keyword types to the objects
     objdict = ncg.apply_iterable_options
     rowid = msg['id']
-
-    session = ncg.Session()
     obj = objdict[msg['along']]
-    res = session.query(obj).filter(getattr(obj, 'id')==msg['id']).one()
-    session.close()
+    with ncg.session_scope() as session:
+        res = session.query(obj).filter(getattr(obj, 'id')==msg['id']).one()
+        print(session.execute('SELECT sum(numbackends) FROM pg_stat_database;').scalar())
+        print('Done instantiating the obj')
+        session.expunge(res) # Disconnect the object from the session
     return res
 
 def main(msg):
 
     ncg = NetworkCandidateGraph()
     ncg.config_from_dict(msg['config'])
+    with ncg.session_scope() as session:
+        print(session.execute('SELECT sum(numbackends) FROM pg_stat_database;').scalar())
+    print('Done with backened sum')
 
     if msg['along'] in ['node', 'edge']:
         obj = _instantiate_obj(msg, ncg)
@@ -67,6 +71,8 @@ def main(msg):
     if hasattr(obj, msg['func']): 
         func = getattr(obj, msg['func'])
     else:
+        # In this case, obj is just the integer ID. This is only called for database
+        # related objects.
         func = import_func(msg['func'])
         # Get the object begin processed prepended into the args.
         msg['args'] = (obj, *msg['args'])

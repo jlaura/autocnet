@@ -63,8 +63,7 @@ def place_points_in_overlaps(size_threshold=0.0007,
     size_threshold : float
                      overlaps with area <= this threshold are ignored
     """
-    Session = ncg.Session
-    if not Session:
+    if not ncg.Session:
         raise BrokenPipeError('This func requires a database session from a NetworkCandidateGraph.')
 
     for overlap in Overlay.overlapping_larger_than(size_threshold, Session):
@@ -106,8 +105,7 @@ def place_points_in_overlap(overlap,
     points : list of Points
         The list of points seeded in the overlap
     """
-    Session = ncg.Session
-    if not Session:
+    if not ncg.Session:
         raise BrokenPipeError('This func requires a database session from a NetworkCandidateGraph.')
 
     # Determine what sensor type to use

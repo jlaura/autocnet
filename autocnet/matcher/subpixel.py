@@ -714,6 +714,9 @@ def subpixel_register_measure(measureid,
 
     result = {'measureid':measureid,
               'status':''}
+    
+    if not ncg.Session:
+        raise BrokenPipeError('This func requires a database session from a NetworkCandidateGraph.')
 
     with ncg.session_scope() as session:
         # Setup the measure that is going to be matched
@@ -792,10 +795,6 @@ def subpixel_register_point(pointid,
 
     Parameters
     ----------
-    ncg : obj
-          the network candidate graph that the point is associated with; used for
-          the DB session that is able to access the point.
-
     pointid : int or obj
               The identifier of the point in the DB or a Points object
 
@@ -814,9 +813,12 @@ def subpixel_register_point(pointid,
     threshold : numeric
                 measures with a cost <= the threshold are marked as ignore=True in
                 the database.
+    ncg : obj
+          the network candidate graph that the point is associated with; used for
+          the DB session that is able to access the point.
     """
-    Session = ncg.Session
-    if not Session:
+
+    if not ncg.Session:
         raise BrokenPipeError('This func requires a database session from a NetworkCandidateGraph.')
 
     if isinstance(pointid, Points):
