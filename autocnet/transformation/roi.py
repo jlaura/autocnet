@@ -36,8 +36,8 @@ class Roi():
     bottom_y : int
                The bottom image coordinate in imge space
     """
-    def __init__(self, geodataset, x, y, size_x=200, size_y=200):
-        self.geodataset = geodataset
+    def __init__(self, data, x, y, size_x=200, size_y=200):
+        self.data = data
 
         self.x = x
         self.y = y
@@ -68,10 +68,10 @@ class Roi():
         """
         try:
             # Geodataset object
-            raster_size = self.geodataset.raster_size
-        except:
+            raster_size = self.data.raster_size
+        except: 
             # Numpy array in y,x form
-            raster_size = self.geodataset.shape[::-1]
+            raster_size = self.data.shape[::-1]
 
         # what is the extent that can actually be extracted?
         left_x = self._x - self.size_x
@@ -90,15 +90,20 @@ class Roi():
 
         return list(map(int, [left_x, right_x, top_y, bottom_y]))
 
+    @property
+    def center(self):
+        ie = self.image_extent
+        return (ie[1] - ie[0])/2, (ie[3]-ie[2])/2
+
     def clip(self, dtype=None):
         pixels = self.image_extent
-        if isinstance(self.geodataset, np.ndarray):
-            array = self.geodataset[pixels[2]:pixels[3]+1,
+        if isinstance(self.data, np.ndarray):
+            array = self.data[pixels[2]:pixels[3]+1,
                                          pixels[0]:pixels[1]+1]
         else:
             # Have to reformat to [xstart, ystart, xnumberpixels, ynumberpixels]
             pixels = [pixels[0], pixels[2], pixels[1]-pixels[0], pixels[3]-pixels[2]]
-            array = self.geodataset.read_array(pixels=pixels, dtype=dtype)
+            array = self.data.read_array(pixels=pixels, dtype=dtype)
 
         return array
 

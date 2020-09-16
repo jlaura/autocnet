@@ -85,7 +85,7 @@ def pattern_match_autoreg(template, image, subpixel_size=3, max_scaler=0.2, func
 
     return x, y, max_corr
 
-def pattern_match(template, image, upsampling=16, func=cv2.TM_CCOEFF_NORMED, error_check=False):
+def pattern_match(template, image, upsampling=16, metric=cv2.TM_CCOEFF_NORMED, error_check=False):
     """
     Call an arbitrary pattern matcher using a subpixel approach where the template and image
     are upsampled using a third order polynomial.
@@ -135,10 +135,10 @@ def pattern_match(template, image, upsampling=16, func=cv2.TM_CCOEFF_NORMED, err
         u_template = template
         u_image = image
 
-    result = cv2.matchTemplate(u_image, u_template, method=func)
+    result = cv2.matchTemplate(u_image, u_template, method=metric)
     _, max_corr, min_loc, max_loc = cv2.minMaxLoc(result)
 
-    if func == cv2.TM_SQDIFF or func == cv2.TM_SQDIFF_NORMED:
+    if metric == cv2.TM_SQDIFF or metric == cv2.TM_SQDIFF_NORMED:
         x, y = (min_loc[0], min_loc[1])
     else:
         x, y = (max_loc[0], max_loc[1])

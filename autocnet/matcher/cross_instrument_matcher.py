@@ -105,8 +105,12 @@ def generate_ground_points(Session, ground_mosaic, nspts_func=lambda x: int(roun
         # res = ground_session.execute(formated_sql)
         p = Point(*coord)
         print(f'point {i}'),
-
+ 
+        
         linessamples = isis.point_info(ground_mosaic.file_name, p.x, p.y, 'ground')
+        if linessamples is None:
+            print('unable to find point in ground image')
+            continue
         line = linessamples[0].get('Line')
         sample = linessamples[0].get('Sample')
 
@@ -259,10 +263,12 @@ def propagate_point(Session,
     # lazily iterate for now
     for k,m in image_measures.iterrows():
         base_image = GeoDataset(m["path"])
-
+        
         sx, sy = m["sample"], m["line"]
 
         for i,image in images.iterrows():
+            print('PATH', image['path'])
+            # When grounding to THEMIS the df has a PATH to the QUAD
             dest_image = GeoDataset(image["path"])
 
             if os.path.basename(m['path']) == os.path.basename(image['path']):
@@ -273,7 +279,6 @@ def propagate_point(Session,
                 print(f'prop point: dest_image: {dest_image}')
                 print(f'prop point: (sx, sy): ({sx}, {sy})')
                 x,y, dist, metrics, corrmap = geom_match(base_image, dest_image, sx, sy, \
-                        size_x=size_x, size_y=size_y, \
                         template_kwargs=template_kwargs, \
                         verbose=verbose)
             except Exception as e:
@@ -431,7 +436,7 @@ def propagate_control_network(Session,
         if len(gp_measures) == 0:
             continue
         constrained_net.extend(gp_measures)
-
+        
     ground = gpd.GeoDataFrame.from_dict(constrained_net).set_geometry('point')
     groundpoints = ground.groupby('pointid').groups
 
