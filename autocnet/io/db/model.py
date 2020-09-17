@@ -128,6 +128,7 @@ class Edges(BaseMixin, Base):
     fundamental = Column(ArrayType())
     ignore = Column(Boolean, default=False)
     masks = Column(Json())
+    weights = Column(Json())
 
 class Costs(BaseMixin, Base):
     __tablename__ = 'costs'

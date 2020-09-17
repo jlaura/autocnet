@@ -1,6 +1,7 @@
-from functools import wraps, singledispatch
-import warnings
 from collections import defaultdict, MutableMapping, Counter
+from functools import wraps, singledispatch
+import json
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -53,12 +54,10 @@ class Edge(dict, MutableMapping):
         self['fundamental_matrix'] = None
         self.subpixel_matches = pd.DataFrame()
         self._matches = pd.DataFrame()
-        self['weights'] = {}
 
         self['source_mbr'] = None
         self['destin_mbr'] = None
         self['overlap_latlon_coords'] = None
-
 
     def __repr__(self):
         return """
@@ -67,11 +66,18 @@ class Edge(dict, MutableMapping):
         Available Masks: {}
         """.format(self.source, self.destination, self.masks)
 
-
     def __eq__(self, other):
         return utils.compare_dicts(self.__dict__, other.__dict__) *\
                utils.compare_dicts(self, other)
 
+    @property
+    def weights(self):
+        return getattr(self, '_weights', {})
+
+    @weights.setter
+    def weights(self, kv):
+        key, value = kv
+        self._weights[key] = value
 
     @property
     def masks(self):
@@ -611,8 +617,8 @@ class Edge(dict, MutableMapping):
 
         overlapinfo = cg.two_poly_overlap(poly1, poly2)
 
-        self['weights']['overlap_area'] = overlapinfo[1]
-        self['weights']['overlap_percn'] = overlapinfo[0]
+        self['weights'] = ('overlap_area', overlapinfo[1])
+        self['weights'] = ('overlap_percn', overlapinfo[0])
 
     def coverage(self, clean_keys = []):
         """
@@ -748,6 +754,29 @@ class NetworkEdge(Edge):
                    filter(table_obj.destination == self.destination['node_id'])
             session.expunge_all()
         return res
+
+    @property
+    def weights(self):
+        with self.parent.session_scope() as session:
+            res = session.query(Edges.weights).\
+                                            filter(Edges.source == self.source['node_id']).\
+                                            filter(Edges.destination == self.destination['node_id']).\
+                                            one()[0]
+        self._weights = json.loads(res)
+        return self._weights
+
+    @weights.setter
+    def weights(self, kv):
+        key, value = kv
+        with self.parent.session_scope() as session:
+            res = session.query(Edges).\
+                                            filter(Edges.source == self.source['node_id']).\
+                                            filter(Edges.destination == self.destination['node_id']).\
+                                            one()
+            weights = json.loads(res.weights)
+            weights[key] = value
+
+            res.weights = json.dumps(weights)
 
     @property
     def parent(self):
@@ -936,7 +965,7 @@ class NetworkEdge(Edge):
                              destination=self.destination['node_id'],
                              ring=ring)
                 session.add(edge)
-
+            
     @property
     def intersection(self):
         if not hasattr(self, '_intersection'):

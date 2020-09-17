@@ -52,6 +52,13 @@ class TestEdge(unittest.TestCase):
         self.assertEqual(e['weights']['overlap_area'], 400)
         self.assertAlmostEqual(e['weights']['overlap_percn'], 14.285714285)
 
+    def test_weight(self):
+        e = edge.Edge()
+        assert e.weight == 1
+        func = lambda x: x
+        e.set_weight(func, 2)
+        assert e.weight  == 2
+
     def test_coverage(self):
         adjacency = get_path('two_image_adjacency.json')
         basepath = get_path('Apollo15')
