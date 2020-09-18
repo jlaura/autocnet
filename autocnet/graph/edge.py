@@ -1005,6 +1005,7 @@ class NetworkEdge(Edge):
     def measures(self):
         with self.parent.session_scope() as session:
             res = session.query(Measures).filter(sqlalchemy.or_(Measures.imageid == self.source['node_id'], Measures.imageid == self.destination['node_id'])).all()
+            session.expunge_all()
         return res
 
     def network_to_matches(self, ignore_point=False, ignore_measure=False, rejected_jigsaw=False):

@@ -950,9 +950,11 @@ class CandidateGraph(nx.Graph):
         : Object
           A networkX graph object
         """
-        edges = [(u, v) for u, v, edge in self.edges.data(
-            'data') if func(edge, *args, **kwargs)]
-        return self.create_edge_subgraph(edges)
+        edges_to_remove = [(u, v) for u, v, edge in self.edges.data(
+                            'data') if func(edge, *args, **kwargs)]
+        subgraph = nx.create_empty_copy(self)
+        subgraph.add_edges_from(edges_to_remove)
+        return subgraph
 
     def compute_cliques(self, node_id=None):  # pragma: no cover
         """
