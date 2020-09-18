@@ -527,8 +527,7 @@ def geom_match(base_cube,
                input_cube,
                bcenter_x,
                bcenter_y,
-               template_kwargs={"image_size":(59,59), "template_size":(31,31)},
-               phase_kwargs=None,
+               template_kwargs={"image_size":(59,59), "template_size":(31,31)}
                verbose=True):
     """
     Propagates a source measure into destination images and then perfroms subpixel registration.
@@ -559,9 +558,6 @@ def geom_match(base_cube,
 
     template_kwargs: dict
                      contains keywords necessary for autocnet.matcher.subpixel.subpixel_template
-
-    phase_kwargs:    dict
-                     contains kwargs for autocnet.matcher.subpixel.subpixel_phase
 
     verbose:    boolean
                 indicates level of print out desired. If True, two subplots are output; the first subplot contains
