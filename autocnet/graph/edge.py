@@ -72,12 +72,14 @@ class Edge(dict, MutableMapping):
 
     @property
     def weights(self):
-        return getattr(self, '_weights', {})
+        if not hasattr(self, '_weights'):
+            self._weights = {}
+        return self._weights
 
     @weights.setter
     def weights(self, kv):
         key, value = kv
-        self._weights[key] = value
+        self.weights[key] = value
 
     @property
     def masks(self):
@@ -617,8 +619,8 @@ class Edge(dict, MutableMapping):
 
         overlapinfo = cg.two_poly_overlap(poly1, poly2)
 
-        self['weights'] = ('overlap_area', overlapinfo[1])
-        self['weights'] = ('overlap_percn', overlapinfo[0])
+        self.weights = ('overlap_area', overlapinfo[1])
+        self.weights = ('overlap_percn', overlapinfo[0])
 
     def coverage(self, clean_keys = []):
         """
