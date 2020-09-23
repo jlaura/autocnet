@@ -750,15 +750,6 @@ class CandidateGraph(nx.Graph):
         """
         return nx.isolates(self)
 
-    def filter_by_weight(self, threshold):
-        def filter_edge(n1, n2):
-            if self[n1][n2]['weight'] > threshold:
-                return True
-            return False
-
-        vg = nx.subgraph_view(g, filter_edge=filter_edge)
-        return sorted(nx.connected_components(vg), key=len, reverse=True)
-
     def connected_subgraphs(self):
         """
         Finds and returns a list of each connected subgraph of nodes. Each subgraph is a set.
