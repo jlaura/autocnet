@@ -325,14 +325,6 @@ def subpixel_transformed_template(sx, sy, dx, dy,
     s_image = bytescale(s_roi.clip(dtype=s_image_dtype))
     d_template = bytescale(d_roi.clip(dtype=d_template_dtype))
 
-    if verbose:
-        fig, axs = plt.subplots(1, 5, figsize=(20,10))
-        # Plot of the original image and template
-        axs[0].imshow(s_image, cmap='Greys')
-        axs[0].set_title('Destination')
-        axs[1].imshow(d_template, cmap='Greys')
-        axs[1].set_title('Original Source')
-
     # Build the transformation chance
     shift_x, shift_y = d_roi.center
     
@@ -349,25 +341,18 @@ def subpixel_transformed_template(sx, sy, dx, dy,
                                 itrans,
                                 order=3)
 
-    # Scale the source arr to the destination array size
+    # Scale the CTX arr to the proper size
     scale_y, scale_x = transform.scale
     template_shape_y, template_shape_x = d_template.shape
+
     scaled_roi = tf.resize(transformed_roi, (int(template_shape_x/scale_x), int(template_shape_y/scale_x)))
+    d_template = bytescale(scaled_roi)
     
     # Clip the transformed template to avoid no data around around the edges
-    buffered_template = scaled_roi[template_buffer:-template_buffer,template_buffer:-template_buffer]
+    buffered_template = d_template[template_buffer:-template_buffer,template_buffer:-template_buffer]
 
     # Apply the matcher on the transformed array
-    shift_x, shift_y, metrics, corrmap = func(bytescale(buffered_template), s_image, **kwargs)
-
-    if verbose:
-        axs[2].imshow(transformed_roi, cmap='Greys')
-        axs[2].set_title('Affine Transformed Source')
-        axs[3].imshow(buffered_template, cmap='Greys')
-        axs[3].set_title('Scaled and Buffered Source')
-        axs[4].imshow(corrmap)
-        axs[4].set_title('Correlation')
-        plt.show()
+    shift_x, shift_y, metrics, corrmap = func(buffered_template, s_image, **kwargs)
 
     # Project the center into the affine space
     projected_center = itrans(d_roi.center)[0]
@@ -394,7 +379,6 @@ def subpixel_template(sx, sy, dx, dy,
                       image_size=(251, 251),
                       template_size=(51,51),
                       func=pattern_match,
-                      transform = None,
                       verbose=False,
                       **kwargs):
     """
@@ -457,12 +441,8 @@ def subpixel_template(sx, sy, dx, dy,
     image_size = check_image_size(image_size)
     template_size = check_image_size(template_size)
 
-    if transform:
-        template_size_x = template_size[0] * transform.scale[0]
-        template_size_y = template_size[1] * transform.scale[1]
-    else:
-        template_size_x = template_size[0]
-        template_size_y = template_size[1]
+    template_size_x = template_size[0]
+    template_size_y = template_size[1]
 
     s_roi = roi.Roi(s_img, sx, sy, size_x=image_size[0], size_y=image_size[1])
     d_roi = roi.Roi(d_img, dx, dy, size_x=template_size_x, size_y=template_size_y)
@@ -485,31 +465,7 @@ def subpixel_template(sx, sy, dx, dy,
          axs[0].imshow(s_image, cmap='Greys')
          axs[1].imshow(d_template, cmap='Greys')
 
-    if transform:
-        # Build the transformation chance
-        shift_x, shift_y = d_roi.center
-        
-        tf_rotate = tf.AffineTransform(rotation=transform.rotation, shear=transform.shear)
-        tf_shift = tf.SimilarityTransform(translation=[-shift_x, -shift_y])
-        tf_shift_inv = tf.SimilarityTransform(translation=[shift_x, shift_y])
-
-        # Define the full chain and the inverse
-        trans = (tf_shift + (tf_rotate + tf_shift_inv))
-        itrans = trans.inverse
-
-        # Now apply the affine transformation
-        transformed_roi = tf.warp(d_template,
-                                  itrans,
-                                  order=3)
-
-        # Scale the CTX arr to the proper size
-        scale_y, scale_x = transform.scale
-        template_shape_y, template_shape_x = d_template.shape
-
-        scaled_roi = tf.resize(transformed_roi, (int(template_shape_x/scale_x), int(template_shape_y/scale_x)))
-        d_template = bytescale(scaled_roi)
-    else:
-        transformed_roi = d_template
+    transformed_roi = d_template
 
     if verbose:
         axs[2].imshow(transformed_roi, cmap='Greys')
@@ -520,28 +476,12 @@ def subpixel_template(sx, sy, dx, dy,
     if (s_image is None) or (d_template is None):
         return None, None, None, None
 
-    shift_x, shift_y, metrics, corrmap = func(d_template[5:-5,5:-5], s_image, **kwargs)
+    # Apply the matcher function
+    shift_x, shift_y, metrics, corrmap = func(d_template, s_image, **kwargs)
 
-    if transform:
-        # Project the center into the affine space
-        projected_center = itrans(d_roi.center)[0]
-
-        # Shifts need to be scaled back into full resolution, affine space
-        shift_x *= scale_x
-        shift_y *= scale_y
-
-        # Apply the shifts (computed using the warped image) to the affine space center
-        new_projected_x = projected_center[0] - shift_x
-        new_projected_y = projected_center[1] - shift_y
-
-        # Project the updated location back into image space
-        new_unprojected_x, new_unprojected_y = trans([new_projected_x, new_projected_y])[0]
-
-        dx = d_roi.x - (d_roi.center[0] - new_unprojected_x)
-        dy = d_roi.y - (d_roi.center[1] - new_unprojected_y)
-    else:
-        dx = d_roi.x - shift_x
-        dy = d_roi.y - shift_y
+    # Apply the shift to the center of the ROI object
+    dx = d_roi.x - shift_x
+    dy = d_roi.y - shift_y
 
     return dx, dy, metrics, corrmap
 
@@ -833,106 +773,20 @@ def geom_match(destination_cube,
     # Estimate the transformation
     affine = estimate_affine_transformation(base_corners, dst_corners)
 
-    # Constant THEMIS scales.
-    # Multiple CTX by the scale to make it all big and such
-    restemplate = subpixel_template(bcenter_x, bcenter_y, 
-                                    center_x, center_y, 
-                                    base_cube, input_cube, 
-                                    transform=affine,
-                                    verbose=verbose,
-                                    **template_kwargs)
+    # Apply the subpixel matcher with an affine transformation
+    restemplate = subpixel_transformed_template(bcenter_x, bcenter_y, 
+                                                center_x, center_y, 
+                                                base_cube, input_cube, 
+                                                affine,
+                                                verbose=verbose,
+                                                **template_kwargs)
 
-    if phase_kwargs:
-        _,_,maxcorr, temp_corrmap = restemplate
-        sample_template, line_template = affine([restemplate[0], restemplate[1]])[0]
-        sample_template += start_x
-        line_template += start_y
-        dist_temp = np.linalg.norm([center_x-sample_template, center_y-line_template])
+    x,y,maxcorr,temp_corrmap = restemplate
+    
+    if x is None or y is None:
+        return None, None, None, None, None
 
-        resphase = subpixel_phase(size_x, size_y, restemplate[0], restemplate[1], base_arr, dst_arr, **phase_kwargs)
-        x,y,(perror, pdiff) = resphase
-        if x is None or y is None:
-            return None, None, None, None, None
-        sample, line = affine([x, y])[0]
-        sample += start_x
-        line += start_y
-        phase_dist = np.linalg.norm([sample_template-sample, line_template-line])
-
-        dist = (dist_temp, dist_phase)
-        metric = (maxcorr, perror, pdiff)
-    else:
-        x,y,maxcorr,temp_corrmap = restemplate
-        
-        if x is None or y is None:
-            return None, None, None, None, None
-        
-        if verbose:
-            image_size = template_kwargs['image_size']
-            template_size = template_kwargs['template_size']
-            image_size = check_image_size(image_size)
-            template_size = check_image_size(template_size)
-            image_chip = roi.Roi(base_cube, bcenter_x, bcenter_y, size_x=image_size[0], size_y=image_size[1]).clip()
-            temp_chip = roi.Roi(input_cube, x, y, size_x=template_size[0], size_y=template_size[1]).clip()
-            fig, axs = plt.subplots(1, 3, figsize=(15,15))
-            axs[0].set_title("Image Chip")
-            axs[0].imshow(bytescale(image_chip), cmap="Greys_r")
-            axs[1].set_title("Template Chip")
-            axs[1].imshow(bytescale(temp_chip), cmap="Greys_r")
-            print(temp_corrmap.shape)
-            pcm = axs[2].imshow(temp_corrmap**2, interpolation=None, cmap="coolwarm")
-            plt.show()
-
-            fig, axs = plt.subplots(1, 3, figsize=(15,15))
-            axs[0].set_title("Base")
-            axs[0].imshow(bytescale(base_arr), cmap="Greys_r")
-            axs[0].scatter(size_x, size_y, s=10, color='red')
-            axs[0].plot([0, size_x*2], [size_y, size_y], linewidth=0.75, color='red')
-            axs[0].plot([size_x, size_x], [0, size_y*2], linewidth=0.75, color='red')
-            #axs[0].set_xlim([0, base_arr.shape[0]])
-            #axs[0].set_ylim([0, base_arr.shape[1]])
-            axs[1].set_title("Unprojected Image\n w/ original point")
-            dst_arr = input_cube.read_array(pixels=dst_pixels, dtype=dst_type)
-            axs[1].imshow(bytescale(dst_arr), cmap="Greys_r")
-            #axs[1].scatter(warped_center_x, warped_center_y, s=10, color='blue')
-            nx, ny = affine([x,y])[0]
-            ox, oy = affine(warped_center)[0]
-            print(nx, ny)
-            axs[1].scatter(nx, ny, s=10, color='red')
-            axs[1].scatter(ox, oy, s=10, color='blue')
-            #axs[1].plot([0, size_x*2], [size_y, size_y], linewidth=0.75, color='red')
-            #axs[1].plot([size_x, size_x], [0, size_y*2], linewidth=0.75, color='red')
-            #axs[1].set_xlim([0, dst_arr[2:].shape[0]])
-            #axs[1].set_ylim([0, dst_arr[2:].shape[1]])
-            axs[2].set_title("Projected Image\n w/ registered point")
-            axs[2].imshow(bytescale(dst_arr[2:]), cmap="Greys_r")
-            axs[2].scatter(x, y, s=10, color='red')
-            axs[2].plot([0, size_x*2], [y, y], linewidth=0.75, color='red')
-            axs[2].plot([x, x], [0, size_y*2], linewidth=0.75, color='red')
-            #axs[2].set_xlim([0, dst_arr[2:].shape[0]])
-            #axs[2].set_ylim([0, dst_arr[2:].shape[1]])
-
-            plt.show()
-
-        dist = np.linalg.norm([center_x-x, center_y-y])
-        print('DIST', dist)
-        """if verbose:
-            fig, axs = plt.subplots(1, 2, figsize=(10,5))
-            # clip the image around the new line, sample
-            new_size_x = round(size_x*100/6) # 100/6 is a scaling between tehmis and CTX resolution
-            new_size_y = round(size_y*100/6)
-            new_dst_arr = roi.Roi(input_cube, sample, line, size_x=new_size_x, size_y=new_size_y).clip()
-            axs[0].imshow(new_dst_arr, cmap='Greys_r');
-            axs[0].scatter(new_size_x, new_size_y, s=10, color='red');
-            axs[0].set_title("Absolute\n Unprojected Image \nw/ registered point");
-
-            dst_arr_org = input_cube.read_array(pixels=dst_pixels, dtype=dst_type)
-            ssample, lline = affine([x, y])[0]
-            axs[1].imshow(dst_arr_org, cmap="Greys_r")
-            axs[1].scatter(ssample, lline, s=10, color='blue')
-            axs[1].set_title("Relative\n Unprojected Image\nw/registered point")
-            plt.show()"""
-
-
+    dist = np.linalg.norm([center_x-x, center_y-y])
     return x, y, dist, metric, temp_corrmap
 
 
