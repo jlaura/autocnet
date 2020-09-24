@@ -4,6 +4,8 @@ import sys
 import unittest
 from unittest.mock import patch
 
+from skimage import transform as tf
+
 import pytest
 
 import numpy as np
@@ -36,18 +38,19 @@ def test_clip_roi(center_x, center_y, size, expected):
 
     assert clip.mean() == expected
 
+def clip_side_effect(*args, **kwargs):
+    if np.array_equal(a, args[0]):
+        return a, 0, 0
+    else:
+        center_y = b.shape[0] / 2
+        center_x = b.shape[1] / 2
+        bxr, bx = math.modf(center_x)
+        byr, by = math.modf(center_y)
+        bx = int(bx)
+        by = int(by)
+        return b[by-10:by+11, bx-10:bx+11], bxr, byr
+
 def test_subpixel_template(apollo_subsets):
-    def clip_side_effect(*args, **kwargs):
-        if np.array_equal(a, args[0]):
-            return a, 0, 0
-        else:
-            center_y = b.shape[0] / 2
-            center_x = b.shape[1] / 2
-            bxr, bx = math.modf(center_x)
-            byr, by = math.modf(center_y)
-            bx = int(bx)
-            by = int(by)
-            return b[by-10:by+11, bx-10:bx+11], bxr, byr
     a = apollo_subsets[0]
     b = apollo_subsets[1]
     with patch('autocnet.matcher.subpixel.clip_roi', side_effect=clip_side_effect):
@@ -58,6 +61,25 @@ def test_subpixel_template(apollo_subsets):
     assert strength >= 0.99
     assert nx == 50.5
     assert ny == 52.4375
+
+def test_estimate_affine_transformation():
+    a = [[0,1], [0,0], [1,0], [1,1], [0,1]]
+    b = [[1, 2], [1, 1], [2, 1], [2, 2], [1, 2]]
+    transform = sp.estimate_affine_transformation(a,b)
+    assert isinstance(transform, tf.AffineTransform)
+
+def test_subpixel_transformed_template(apollo_subsets):
+    a = apollo_subsets[0]
+    b = apollo_subsets[1]
+    transform = tf.AffineTransform(rotation=math.radians(1), scale=(1.1,1.1))
+    with patch('autocnet.matcher.subpixel.clip_roi', side_effect=clip_side_effect):
+        nx, ny, strength, _ = sp.subpixel_transformed_template(a.shape[1]/2, a.shape[0]/2,
+                                                b.shape[1]/2, b.shape[0]/2,
+                                                a, b, transform, upsampling=16)
+
+    assert strength >= 0.84
+    assert nx == pytest.approx(51.18894)
+    assert ny == pytest.approx(54.36261)
 
 @pytest.mark.parametrize("convergence_threshold, expected", [(2.0, (50.49, 52.08, (0.039507, -9.5e-20)))])
 def test_iterative_phase(apollo_subsets, convergence_threshold, expected):
