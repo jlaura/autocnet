@@ -325,6 +325,14 @@ def subpixel_transformed_template(sx, sy, dx, dy,
     s_image = bytescale(s_roi.clip(dtype=s_image_dtype))
     d_template = bytescale(d_roi.clip(dtype=d_template_dtype))
 
+    if verbose:
+        fig, axs = plt.subplots(1, 5, figsize=(20,10))
+        # Plot of the original image and template
+        axs[0].imshow(s_image, cmap='Greys')
+        axs[0].set_title('Destination')
+        axs[1].imshow(d_template, cmap='Greys')
+        axs[1].set_title('Original Source')
+
     # Build the transformation chance
     shift_x, shift_y = d_roi.center
     
@@ -341,18 +349,25 @@ def subpixel_transformed_template(sx, sy, dx, dy,
                                 itrans,
                                 order=3)
 
-    # Scale the CTX arr to the proper size
+    # Scale the source arr to the destination array size
     scale_y, scale_x = transform.scale
     template_shape_y, template_shape_x = d_template.shape
-
     scaled_roi = tf.resize(transformed_roi, (int(template_shape_x/scale_x), int(template_shape_y/scale_x)))
-    d_template = bytescale(scaled_roi)
     
     # Clip the transformed template to avoid no data around around the edges
-    buffered_template = d_template[template_buffer:-template_buffer,template_buffer:-template_buffer]
+    buffered_template = scaled_roi[template_buffer:-template_buffer,template_buffer:-template_buffer]
 
     # Apply the matcher on the transformed array
-    shift_x, shift_y, metrics, corrmap = func(buffered_template, s_image, **kwargs)
+    shift_x, shift_y, metrics, corrmap = func(bytescale(buffered_template), s_image, **kwargs)
+
+    if verbose:
+        axs[2].imshow(transformed_roi, cmap='Greys')
+        axs[2].set_title('Affine Transformed Source')
+        axs[3].imshow(buffered_template, cmap='Greys')
+        axs[3].set_title('Scaled and Buffered Source')
+        axs[4].imshow(corrmap)
+        axs[4].set_title('Correlation')
+        plt.show()
 
     # Project the center into the affine space
     projected_center = itrans(d_roi.center)[0]
@@ -461,14 +476,9 @@ def subpixel_template(sx, sy, dx, dy,
     d_template = bytescale(d_roi.clip(dtype=d_template_dtype))
     
     if verbose:
-         fig, axs = plt.subplots(1, 4, figsize=(20,10))
-         axs[0].imshow(s_image, cmap='Greys')
-         axs[1].imshow(d_template, cmap='Greys')
-
-    transformed_roi = d_template
-
-    if verbose:
-        axs[2].imshow(transformed_roi, cmap='Greys')
+        fig, axs = plt.subplots(1, 3, figsize=(20,10))
+        axs[0].imshow(s_image, cmap='Greys')
+        axs[1].imshow(d_template, cmap='Greys')
         axs[3].imshow(corrmap)
         plt.show()
     
@@ -629,8 +639,8 @@ def estimate_affine_transformation(destination_coordinates, source_coordinates):
     return tf.estimate_transform('affine', destination_coordinates, source_coordinates)
 
 
-def geom_match(base_cube,
-               input_cube,
+def geom_match(destination_cube,
+               source_cube,
                bcenter_x,
                bcenter_y,
                template_kwargs={"image_size":(59,59), "template_size":(31,31)},
@@ -645,10 +655,10 @@ def geom_match(base_cube,
 
     Parameters
     ----------
-    base_cube:  plio.io.io_gdal.GeoDataset
+    destination_cube:  plio.io.io_gdal.GeoDataset
                 source image
 
-    input_cube: plio.io.io_gdal.GeoDataset
+    sourcecube: plio.io.io_gdal.GeoDataset
                 destination image; gets matched to the source image
 
     bcenter_x:  int
@@ -703,76 +713,76 @@ def geom_match(base_cube,
 
     """
 
-    if not isinstance(input_cube, GeoDataset):
-        raise Exception("input cube must be a geodataset obj")
+    if not isinstance(source_cube, GeoDataset):
+        raise Exception("source cube must be a geodataset obj")
 
-    if not isinstance(base_cube, GeoDataset):
-        raise Exception("match cube must be a geodataset obj")
+    if not isinstance(destination_cube, GeoDataset):
+        raise Exception("destination cube must be a geodataset obj")
 
     # Can we validate this inside the ROI object?
-    base_size_x = template_kwargs['image_size'][0]
-    base_size_y = template_kwargs['image_size'][1]
+    destination_size_x = template_kwargs['image_size'][0]
+    destination_size_y = template_kwargs['image_size'][1]
 
-    base_startx = int(bcenter_x - base_size_x)
-    base_starty = int(bcenter_y - base_size_y)
-    base_stopx = int(bcenter_x + base_size_x)
-    base_stopy = int(bcenter_y + base_size_y)
+    destination_startx = int(bcenter_x - destination_size_x)
+    destination_starty = int(bcenter_y - destination_size_y)
+    destination_stopx = int(bcenter_x + destination_size_x)
+    destination_stopy = int(bcenter_y + destination_size_y)
 
-    image_size = input_cube.raster_size
-    match_size = base_cube.raster_size
+    image_size = source_cube.raster_size
+    match_size = destination_cube.raster_size
 
     # for now, require the entire window resides inside both cubes.
-    if base_stopx > match_size[0]:
-        raise Exception(f"Window: {base_stopx} > {match_size[0]}, center: {bcenter_x},{bcenter_y}")
-    if base_startx < 0:
-        raise Exception(f"Window: {base_startx} < 0, center: {bcenter_x},{bcenter_y}")
-    if base_stopy > match_size[1]:
-        raise Exception(f"Window: {base_stopy} > {match_size[1]}, center: {bcenter_x},{bcenter_y} ")
-    if base_starty < 0:
-        raise Exception(f"Window: {base_starty} < 0, center: {bcenter_x},{bcenter_y}")
+    if destination_stopx > match_size[0]:
+        raise Exception(f"Window: {destination_stopx} > {match_size[0]}, center: {bcenter_x},{bcenter_y}")
+    if destination_startx < 0:
+        raise Exception(f"Window: {destination_startx} < 0, center: {bcenter_x},{bcenter_y}")
+    if destination_stopy > match_size[1]:
+        raise Exception(f"Window: {destination_stopy} > {match_size[1]}, center: {bcenter_x},{bcenter_y} ")
+    if destination_starty < 0:
+        raise Exception(f"Window: {destination_starty} < 0, center: {bcenter_x},{bcenter_y}")
 
-    base_corners = [(base_startx,base_starty),
-                    (base_startx,base_stopy),
-                    (base_stopx,base_stopy),
-                    (base_stopx,base_starty)]
+    destination_corners = [(destination_startx,destination_starty),
+                    (destination_startx,destination_stopy),
+                    (destination_stopx,destination_stopy),
+                    (destination_stopx,destination_starty)]
 
     # specifically not putting this in a try/except, this should never fail
     # 07/28 - putting it in a try/except because of how we ground points
-    # Transform from the base center to the input_cube center
+    # Transform from the destination center to the source_cube center
     try:
-        mlat, mlon = spatial.isis.image_to_ground(base_cube.file_name, bcenter_x, bcenter_y)
-        center_y, center_x = spatial.isis.ground_to_image(input_cube.file_name, mlon, mlat)
+        mlat, mlon = spatial.isis.image_to_ground(destination_cube.file_name, bcenter_x, bcenter_y)
+        center_y, center_x = spatial.isis.ground_to_image(source_cube.file_name, mlon, mlat)
     except ProcessError as e:
             if 'Requested position does not project in camera model' in e.stderr:
-                print(f'Skip geom_match; Region of interest center located at ({mlon}, {mlat}) does not project to image {input_cube.base_name}')
+                print(f'Skip geom_match; Region of interest center located at ({mlon}, {mlat}) does not project to image {source_cube.base_name}')
                 print('This should only appear when propagating ground points')
                 return None, None, None, None, None
 
-    # Compute the mapping between the base corners and the input_cube corners in
+    # Compute the mapping between the destination corners and the source_cube corners in
     # order to estimate an affine transformation
-    dst_corners = []
-    for x,y in base_corners:
+    source_corners = []
+    for x,y in destination_corners:
         try:
-            lat, lon = spatial.isis.image_to_ground(base_cube.file_name, x, y)
-            dst_corners.append(spatial.isis.ground_to_image(input_cube.file_name, lon, lat)[::-1])
+            lat, lon = spatial.isis.image_to_ground(destination_cube.file_name, x, y)
+            source_corners.append(spatial.isis.ground_to_image(source_cube.file_name, lon, lat)[::-1])
         except ProcessError as e:
             if 'Requested position does not project in camera model' in e.stderr:
-                print(f'Skip geom_match; Region of interest corner located at ({lon}, {lat}) does not project to image {input_cube.base_name}')
+                print(f'Skip geom_match; Region of interest corner located at ({lon}, {lat}) does not project to image {source_cube.base_name}')
                 return None, None, None, None, None
 
 
     # Estimate the transformation
-    affine = estimate_affine_transformation(base_corners, dst_corners)
+    affine = estimate_affine_transformation(destination_corners, source_corners)
 
     # Apply the subpixel matcher with an affine transformation
     restemplate = subpixel_transformed_template(bcenter_x, bcenter_y, 
                                                 center_x, center_y, 
-                                                base_cube, input_cube, 
+                                                destination_cube, source_cube, 
                                                 affine,
                                                 verbose=verbose,
                                                 **template_kwargs)
 
-    x,y,maxcorr,temp_corrmap = restemplate
+    x, y, metric, temp_corrmap = restemplate
     
     if x is None or y is None:
         return None, None, None, None, None
