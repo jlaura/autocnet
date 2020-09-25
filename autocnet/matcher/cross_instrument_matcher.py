@@ -267,7 +267,6 @@ def propagate_point(Session,
         sx, sy = m["sample"], m["line"]
 
         for i,image in images.iterrows():
-            print('PATH', image['path'])
             # When grounding to THEMIS the df has a PATH to the QUAD
             dest_image = GeoDataset(image["path"])
 
