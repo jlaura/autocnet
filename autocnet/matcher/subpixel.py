@@ -656,10 +656,10 @@ def geom_match(destination_cube,
     Parameters
     ----------
     destination_cube:  plio.io.io_gdal.GeoDataset
-                source image
+                       The image to be matched to
 
-    sourcecube: plio.io.io_gdal.GeoDataset
-                destination image; gets matched to the source image
+    source_cube: plio.io.io_gdal.GeoDataset
+                 The image that is transformed and matched into the destination_cube
 
     bcenter_x:  int
                 sample location of source measure in base_cube
@@ -719,7 +719,6 @@ def geom_match(destination_cube,
     if not isinstance(destination_cube, GeoDataset):
         raise Exception("destination cube must be a geodataset obj")
 
-    # Can we validate this inside the ROI object?
     destination_size_x = template_kwargs['image_size'][0]
     destination_size_y = template_kwargs['image_size'][1]
 
