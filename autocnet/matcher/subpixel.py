@@ -461,7 +461,7 @@ def subpixel_template(sx, sy, dx, dy,
     d_template = bytescale(d_roi.clip(dtype=d_template_dtype))
     
     if verbose:
-         fig, axs = plt.subplots(1, 5, figsize=(20,10))
+         fig, axs = plt.subplots(1, 4, figsize=(20,10))
          axs[0].imshow(s_image, cmap='Greys')
          axs[1].imshow(d_template, cmap='Greys')
 
@@ -469,8 +469,7 @@ def subpixel_template(sx, sy, dx, dy,
 
     if verbose:
         axs[2].imshow(transformed_roi, cmap='Greys')
-        axs[3].imshow(d_template[5:-5,5:-5], cmap='Greys')
-        axs[4].imshow(corrmap)
+        axs[3].imshow(corrmap)
         plt.show()
     
     if (s_image is None) or (d_template is None):
