@@ -16,25 +16,6 @@ from shapely.geometry import MultiPolygon, Polygon, Point
 if sys.platform.startswith("darwin"):
     pytest.skip("skipping DB tests for MacOS", allow_module_level=True)
 
-@pytest.fixture
-def session(tables, request, ncg):
-    session = ncg.Session()
-
-    def cleanup():
-        session.rollback()  # Necessary because some tests intentionally fail
-        for t in reversed(tables):
-            # Skip the srid table
-            if t != 'spatial_ref_sys':
-                session.execute(f'TRUNCATE TABLE {t} CASCADE')
-            # Reset the autoincrementing
-            if t in ['Images', 'Cameras', 'Matches', 'Measures']:
-                session.execute(f'ALTER SEQUENCE {t}_id_seq RESTART WITH 1')
-        session.commit()
-
-    request.addfinalizer(cleanup)
-
-    return session
-
 def test_keypoints_exists(tables):
     assert model.Keypoints.__tablename__ in tables
 
