@@ -1403,6 +1403,43 @@ class NetworkCandidateGraph(CandidateGraph):
         # for the sensor calls.
         self._setup_dem()
 
+    def intersecting_nodes(self, lat, lon):
+        """
+        Return a list of nodes that intersect with the given point
+
+        lat : float
+              The latitude coordinate of the intersecting point.
+
+        lon : float
+              The longitude coordinate of the intersecting point.
+
+        Returns
+        -------
+        nodes : list
+                Of NetworkNodes intersecting the lat/lon point.
+        """
+        srid = self.config['spatial']['latitudinal_srid']
+        point_geometry = f'SRID={srid};POINT({lon} {lat})'
+        px, py = self.dem.latlon_to_pixel(lat, lon)
+        height = self.dem.read_array(1, [px, py, 1, 1])[0][0]
+
+        nodes = []
+        with self.session_scope() as session:
+            intersecting_images = session.query(Images.id, Images.path).filter(Images.geom.ST_Intersects(point_geometry)).all()
+            node_res= [i for i in intersecting_images]
+
+            for nid, image_path  in node_res:
+                # Setup the node objects that are covered by the geom
+                nn = NetworkNode(node_id=nid, image_path=image_path)
+                nn.parent = self
+                nodes.append(nn)
+        return nodes
+
+    def grid_of_points(self):
+        fp_poly = ncg.footprint
+        valid = compgeom.distribute_points_in_geom(fp_poly, method='new', **distribute_points_kwargs)
+        return valid
+
     @contextmanager
     def session_scope(self):
      """
