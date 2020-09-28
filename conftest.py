@@ -71,8 +71,8 @@ def default_configuration():
                   'username': 'postgres',
                   'password': 'NotTheDefault',
                   'host': 'localhost',
-                  'port': 5432,
-                  'pgbouncer_port': 5432,
+                  'port': 35432,
+                  'pgbouncer_port': 35432,
                   'name': 'travis_ci_test',
                   'timeout': 500},
               'pfeffernusse': {'url': ''},
@@ -236,12 +236,21 @@ def db_controlnetwork(session):
                                                     apriorisample=k) for k in range(2)])
     session.close()
 
-"""@pytest.fixture(scope='session')
-def bad_controlnetwork(controlnetwork_data):
-    cn = control.ControlNetwork()
-    cn.data = controlnetwork_data
-    # Since the data is being patched in, fix the measure counter
-    cn._measure_id = len(cn.data) + 1
-    # Add a duplicate measure in image 0 to point 0
-    cn.add_measure((0,11), (0,1), 2, [1,1], point_id=0)
-    return cn"""
+@pytest.fixture
+def session(tables, request, ncg):
+    session = ncg.Session()
+
+    def cleanup():
+        session.rollback()  # Necessary because some tests intentionally fail
+        for t in reversed(tables):
+            # Skip the srid table
+            if t != 'spatial_ref_sys':
+                session.execute(f'TRUNCATE TABLE {t} CASCADE')
+            # Reset the autoincrementing
+            if t in ['Images', 'Cameras', 'Matches', 'Measures']:
+                session.execute(f'ALTER SEQUENCE {t}_id_seq RESTART WITH 1')
+        session.commit()
+
+    request.addfinalizer(cleanup)
+
+    return session

@@ -638,7 +638,6 @@ def estimate_affine_transformation(destination_coordinates, source_coordinates):
 
     return tf.estimate_transform('affine', destination_coordinates, source_coordinates)
 
-
 def geom_match(destination_cube,
                source_cube,
                bcenter_x,
@@ -789,7 +788,6 @@ def geom_match(destination_cube,
     dist = np.linalg.norm([center_x-x, center_y-y])
     return x, y, dist, metric, temp_corrmap
 
-
 def subpixel_register_measure(measureid,
                               iterative_phase_kwargs={},
                               subpixel_template_kwargs={},
@@ -896,7 +894,6 @@ def subpixel_register_measure(measureid,
         result['status'] = 'Success.'
 
     return result
-
 
 def subpixel_register_point(pointid,
                             iterative_phase_kwargs={},

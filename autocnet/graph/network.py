@@ -19,6 +19,7 @@ import geoalchemy2
 from sqlalchemy.ext.declarative.api import DeclarativeMeta
 import shapely.affinity
 import shapely.geometry
+from shapely import wkt
 import shapely.wkt as swkt
 import shapely.ops
 
@@ -1351,6 +1352,15 @@ class NetworkCandidateGraph(CandidateGraph):
                 'o' :Overlay,
                 4: Overlay
             }
+
+    @property
+    def footprint(self):
+        """
+        The unioned footprint comprised of all of the individual footprints in the NetworkCandidateGraph
+        """
+        with self.session_scope() as session:
+            footprint = wkt.loads(session.query(geoalchemy2.functions.ST_AsText(geoalchemy2.functions.ST_Union(Images.geom))).one()[0])
+        return footprint
 
     def config_from_file(self, filepath):
         """

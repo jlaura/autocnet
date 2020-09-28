@@ -1,13 +1,13 @@
 import os
 import pytest
 import sys
+from unittest.mock import patch, PropertyMock, MagicMock
 
 import pandas as pd
+from shapely.geometry import MultiPolygon, Polygon
 
 from autocnet.io.db import model
 from autocnet.graph.network import NetworkCandidateGraph
-
-from unittest.mock import patch, PropertyMock, MagicMock
 
 if sys.platform.startswith("darwin"):
     pytest.skip("skipping DB tests for MacOS", allow_module_level=True)
@@ -61,3 +61,21 @@ def test_to_isis(db_controlnetwork, ncg, node_a, node_b, tmpdir):
     ncg.to_isis(outpath)
 
     assert os.path.exists(outpath)
+
+def test_footprint(session, ncg):
+    i1_data = {'id':1,
+               'name':'foo',
+               'path':'/neither/here/nor/there',
+               'geom':MultiPolygon([Polygon([[0,1], [0,0], [1,0], [1,1], [0,1]])])}
+
+    i2_data = {'id':2,
+               'name':'bar',
+               'path':'/neither/there/nor/here',
+               'geom':MultiPolygon([Polygon([[.5,2], [.5,.5], [2,.5], [2,2], [.5,2]])])}
+
+    model.Images.create(session, **i1_data)
+    model.Images.create(session, **i2_data)
+
+    fp = ncg.footprint
+    assert fp.wkt == 'POLYGON ((1 0.5, 1 0, 0 0, 0 1, 0.5 1, 0.5 2, 2 2, 2 0.5, 1 0.5))'
+    
