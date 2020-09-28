@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: jay
       POSTGRES_DB: kaguyasp
     volumes:
-      - "${AUTOCNET_SERVER_DB}:/var/lib/postgresql/data"
+      - "/data/fast/ctx_db:/var/lib/postgresql/data"
     command: -c shared_buffers=8GB -c max_connections=250
     ports:
      - "8085:5432"
