@@ -62,6 +62,32 @@ def test_subpixel_template(apollo_subsets):
     assert nx == 50.5
     assert ny == 52.4375
 
+@pytest.mark.parametrize("loc, failure", [((0,4), True),
+                                          ((4,0), True),
+                                          ((1,1), False)])
+def test_subpixel_template_at_edge(apollo_subsets, loc, failure):
+    a = apollo_subsets[0]
+    b = apollo_subsets[1]
+
+    def func(*args, **kwargs):
+        corr = np.zeros((10,10))
+        corr[loc[0], loc[1]] = 10
+        return 0, 0, 0, corr
+
+    with patch('autocnet.matcher.subpixel.clip_roi', side_effect=clip_side_effect):
+        if failure:
+            with pytest.warns(UserWarning, match=r'Maximum correlation \S+'):
+                nx, ny, strength, _ = sp.subpixel_template(a.shape[1]/2, a.shape[0]/2,
+                                                        b.shape[1]/2, b.shape[0]/2,
+                                                        a, b, upsampling=16,
+                                                        func=func)
+        else:
+            nx, ny, strength, _ = sp.subpixel_template(a.shape[1]/2, a.shape[0]/2,
+                                                        b.shape[1]/2, b.shape[0]/2,
+                                                        a, b, upsampling=16,
+                                                        func=func)
+            assert nx == 50.5
+
 def test_estimate_affine_transformation():
     a = [[0,1], [0,0], [1,0], [1,1], [0,1]]
     b = [[1, 2], [1, 1], [2, 1], [2, 2], [1, 2]]
@@ -133,13 +159,13 @@ def test_check_image_size(data, expected):
     assert sp.check_image_size(data) == expected
 
 @pytest.mark.parametrize("x, y, x1, y1, image_size, template_size, expected",[
-    (4, 3, 3, 2, (3,3), (3,3), (3,2)),
-    (4, 3, 3, 2, (7,7), (3,3), (3,2)),  # Increase the search image size
-    (4, 3, 3, 2, (7,7), (5,5), (3,2)), # Increase the template size
-    (4, 3, 2, 2, (7,7), (3,3), (3,2)), # Move point in the x-axis
-    (4, 3, 4, 3, (7,7), (3,3), (3,2)), # Move point in the other x-direction
-    (4, 3, 3, 1, (7,7), (3,3), (3,2)), # Move point negative in the y-axis
-    (4, 3, 3, 3, (7,7), (3,3), (3,2))  # Move point positive in the y-axis
+    (4, 3, 4, 2, (5,5), (3,3), (4,2)),
+    (4, 3, 4, 2, (7,7), (3,3), (4,2)),  # Increase the search image size
+    (4, 3, 4, 2, (7,7), (5,5), (4,2)), # Increase the template size
+    (4, 3, 3, 2, (7,7), (3,3), (4,2)), # Move point in the x-axis
+    (4, 3, 5, 3, (7,7), (3,3), (4,2)), # Move point in the other x-direction
+    (4, 3, 4, 1, (7,7), (3,3), (4,2)), # Move point negative in the y-axis
+    (4, 3, 4, 3, (7,7), (3,3), (4,2))  # Move point positive in the y-axis
 
 ])
 def test_subpixel_template_cooked(x, y, x1, y1, image_size, template_size, expected):
@@ -158,11 +184,11 @@ def test_subpixel_template_cooked(x, y, x1, y1, image_size, template_size, expec
                            (0, 0, 0, 0, 0, 0, 1, 1, 1)), dtype=np.uint8)
 
     # Should yield (-3, 3) offset from image center
-    t_shape = np.array(((0, 0, 0, 0, 0, 0, 0),
-                        (0, 0, 1, 1, 1, 0, 0),
-                        (0, 0, 0, 1, 0, 0, 0),
-                        (0, 0, 0, 1, 0, 0, 0),
-                        (0, 0, 0, 0, 0, 0, 0)), dtype=np.uint8)
+    t_shape = np.array(((0, 0, 0, 0, 0, 0, 0, 0, 0),
+                        (0, 0, 0, 1, 1, 1, 0, 0, 0),
+                        (0, 0, 0, 0, 1, 0, 0, 0, 0),
+                        (0, 0, 0, 0, 1, 0, 0, 0, 0),
+                        (0, 0, 0, 0, 0, 0, 0, 0, 0)), dtype=np.uint8)
 
     dx, dy, corr, corrmap = sp.subpixel_template(x, y, x1, y1, 
                                                  test_image, t_shape,

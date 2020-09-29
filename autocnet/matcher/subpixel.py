@@ -497,6 +497,11 @@ def subpixel_template(sx, sy, dx, dy,
     # Apply the matcher function
     shift_x, shift_y, metrics, corrmap = func(d_template, s_image, **kwargs)
 
+    # Hard check here to see if we are on the absolute edge of the template
+    if 0 in np.unravel_index(corrmap.argmax(), corrmap.shape):
+        warnings.warn('Maximum correlation is at the edge of the template. Results are ambiguous.', UserWarning)
+        return [None] * 4
+
     # Apply the shift to the center of the ROI object
     dx = d_roi.x - shift_x
     dy = d_roi.y - shift_y
