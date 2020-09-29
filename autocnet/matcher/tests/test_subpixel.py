@@ -81,6 +81,34 @@ def test_subpixel_transformed_template(apollo_subsets):
     assert nx == pytest.approx(51.18894)
     assert ny == pytest.approx(54.36261)
 
+
+@pytest.mark.parametrize("loc, failure", [((0,4), True),
+                                          ((4,0), True),
+                                          ((1,1), False)])
+def test_subpixel_transformed_template_at_edge(apollo_subsets, loc, failure):
+    a = apollo_subsets[0]
+    b = apollo_subsets[1]
+
+    def func(*args, **kwargs):
+        corr = np.zeros((5,5))
+        corr[loc[0], loc[1]] = 10
+        return 0, 0, 0, corr
+
+    transform = tf.AffineTransform(rotation=math.radians(1), scale=(1.1,1.1))
+    with patch('autocnet.matcher.subpixel.clip_roi', side_effect=clip_side_effect):
+        if failure:
+            with pytest.warns(UserWarning, match=r'Maximum correlation \S+'):
+                nx, ny, strength, _ = sp.subpixel_transformed_template(a.shape[1]/2, a.shape[0]/2,
+                                                        b.shape[1]/2, b.shape[0]/2,
+                                                        a, b, transform, upsampling=16,
+                                                        func=func)
+        else:
+            nx, ny, strength, _ = sp.subpixel_transformed_template(a.shape[1]/2, a.shape[0]/2,
+                                                        b.shape[1]/2, b.shape[0]/2,
+                                                        a, b, transform, upsampling=16,
+                                                        func=func)
+            assert nx == 50.5
+
 @pytest.mark.parametrize("convergence_threshold, expected", [(2.0, (50.49, 52.08, (0.039507, -9.5e-20)))])
 def test_iterative_phase(apollo_subsets, convergence_threshold, expected):
     a = apollo_subsets[0]

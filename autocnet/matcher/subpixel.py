@@ -1,6 +1,7 @@
 import json
 from math import modf, floor
 import numpy as np
+import warnings
 
 from skimage.feature import register_translation
 from skimage import transform as tf
@@ -312,6 +313,9 @@ def subpixel_transformed_template(sx, sy, dx, dy,
     s_roi = roi.Roi(s_img, sx, sy, size_x=image_size[0], size_y=image_size[1])
     d_roi = roi.Roi(d_img, dx, dy, size_x=template_size_x, size_y=template_size_y)
 
+    if not s_roi or not d_roi:
+        return None, None, None, None
+
     try:
         s_image_dtype = isis2np_types[pvl.load(s_img.file_name)["IsisCube"]["Core"]["Pixels"]["Type"]]
     except:
@@ -359,6 +363,11 @@ def subpixel_transformed_template(sx, sy, dx, dy,
 
     # Apply the matcher on the transformed array
     shift_x, shift_y, metrics, corrmap = func(bytescale(buffered_template), s_image, **kwargs)
+
+    # Hard check here to see if we are on the absolute edge of the template
+    if 0 in np.unravel_index(corrmap.argmax(), corrmap.shape):
+        warnings.warn('Maximum correlation is at the edge of the template. Results are ambiguous.', UserWarning)
+        return [None] * 4
 
     if verbose:
         axs[2].imshow(transformed_roi, cmap='Greys')
@@ -661,7 +670,7 @@ def geom_match(destination_cube,
     source_cube: plio.io.io_gdal.GeoDataset
                  The image that is transformed and matched into the destination_cube
 
-    bcenter_x:  int
+x    bcenter_x:  int
                 sample location of source measure in base_cube
 
     bcenter_y:  int
@@ -781,13 +790,13 @@ def geom_match(destination_cube,
                                                 verbose=verbose,
                                                 **template_kwargs)
 
-    x, y, metric, temp_corrmap = restemplate
+    x, y, metric, corrmap = restemplate
     
     if x is None or y is None:
         return None, None, None, None, None
 
     dist = np.linalg.norm([center_x-x, center_y-y])
-    return x, y, dist, metric, temp_corrmap
+    return x, y, dist, metric, corrmap
 
 
 def subpixel_register_measure(measureid,
@@ -971,11 +980,11 @@ def subpixel_register_point(pointid,
 
             print('geom_match image:', res.path)
             try:
-                new_x, new_y, dist, metric,  _ = geom_match(source_node.geodata, destination_node.geodata,
-                                                        source.sample, source.line,
-                                                        template_kwargs=subpixel_template_kwargs,
-                                                        phase_kwargs=iterative_phase_kwargs,
-                                                        size_x=100, size_y=100)
+                new_x, new_y, dist, metric, corrmap = geom_match(source_node.geodata, destination_node.geodata,
+                                                                 source.sample, source.line,
+                                                                 template_kwargs=subpixel_template_kwargs,
+                                                                 phase_kwargs=iterative_phase_kwargs,
+                                                                 size_x=100, size_y=100)
             except Exception as e:
                 print(f'geom_match failed on measure {measure.id} with exception -> {e}')
                 measure.ignore = True
@@ -1001,11 +1010,15 @@ def subpixel_register_point(pointid,
 
             cost = cost_func(measure.template_shift, measure.template_metric)
 
+            # Check to see if the cost function requirement has been met
             if cost <= threshold:
                 measure.ignore = True # Threshold criteria not met
                 currentlog['status'] = f'Cost failed. Distance shifted: {measure.template_shift}. Metric: {measure.template_metric}.'
                 resultlog.append(currentlog)
                 continue
+
+            # Check here for move distance
+
 
             # Update the measure
             measure.sample = new_x
