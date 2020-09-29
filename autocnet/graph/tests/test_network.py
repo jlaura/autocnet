@@ -213,12 +213,10 @@ def test_get_matches(candidategraph):
 def test_island_nodes(disconnected_graph):
     assert len(list(disconnected_graph.island_nodes())) == 1
 
-
 def test_triangular_cycles(graph):
     cycles = graph.compute_triangular_cycles()
     # Node order is variable, length is not
     assert len(cycles) == 1
-
 
 def test_connected_subgraphs(graph, disconnected_graph):
     # Calls all return generators, cast to list for positional comparison

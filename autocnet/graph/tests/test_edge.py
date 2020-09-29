@@ -29,7 +29,6 @@ class TestEdge(unittest.TestCase):
 
     def test_edge_overlap(self):
         e = edge.Edge()
-        e.weight = {}
         source = Mock(spec = node.Node)
         destination = Mock(spec = node.Node)
         e.destination = destination
@@ -49,8 +48,16 @@ class TestEdge(unittest.TestCase):
         destination.geodata.footprint = poly2
 
         e.overlap()
-        self.assertEqual(e['weights']['overlap_area'], 400)
-        self.assertAlmostEqual(e['weights']['overlap_percn'], 14.285714285)
+        self.assertEqual(e.weights['overlap_area'], 400)
+        self.assertAlmostEqual(e.weights['overlap_percn'], 14.285714285)
+
+    def test_weight(self):
+        e = edge.Edge()
+        assert e.weights == {}
+        e.weights = ('foo', 1)
+        assert e.weights['foo']  == 1
+        e.weights = ('foo', 2)
+        assert e.weights['foo']  == 2
 
     def test_coverage(self):
         adjacency = get_path('two_image_adjacency.json')

@@ -942,9 +942,11 @@ class CandidateGraph(nx.Graph):
         : Object
           A networkX graph object
         """
-        edges = [(u, v) for u, v, edge in self.edges.data(
-            'data') if func(edge, *args, **kwargs)]
-        return self.create_edge_subgraph(edges)
+        edges_to_remove = [(u, v) for u, v, edge in self.edges.data(
+                            'data') if func(edge, *args, **kwargs)]
+        subgraph = nx.create_empty_copy(self)
+        subgraph.add_edges_from(edges_to_remove)
+        return subgraph
 
     def compute_cliques(self, node_id=None):  # pragma: no cover
         """
@@ -1470,6 +1472,32 @@ class NetworkCandidateGraph(CandidateGraph):
         # Attempt to create the database (if it does not exist)
         try_db_creation(self.engine, self.config)
 
+    def _setup_edges(self):
+        with self.session_scope() as session:
+            res = session.query(Edges).all()
+            
+            edges = []
+            for e in res:
+                s = e.source
+                d = e.destination
+                if s > d:
+                    s,d = d,s
+                edges.append((s,d))
+            
+            to_add = []
+            for e in self.edges:
+                s = e[0]
+                d = e[1]
+                if s > d:
+                    s,d = d,s
+                edgeid = (s,d)
+                if edgeid not in edges:
+                    to_add.append(Edges(source=edgeid[0],
+                                        destination=edgeid[1],
+                                        weights=json.dumps({})))
+            session.add_all(to_add)
+            session.commit()
+
     def _setup_queues(self):
         """
         Setup a 2 queue redis connection for pushing and pulling work/results
@@ -1510,6 +1538,7 @@ class NetworkCandidateGraph(CandidateGraph):
         """
         Push messages to the redis queue for objects e.g., Nodes and Edges
         """
+
         for job_counter, elem in enumerate(onobj.data('data')):
             if getattr(elem[-1], 'ignore', False):
                 continue
@@ -1574,6 +1603,18 @@ class NetworkCandidateGraph(CandidateGraph):
             assert len(res) == self.queue_length
         return len(res)
 
+    def _push_iterable_message(self, iterable, function, walltime, args, kwargs):
+        for job_counter, item in enumerate(iterable):
+            msg = {'along':item,
+                    'func':function,
+                    'args':args,
+                    'kwargs':kwargs,
+                    'walltime':walltime}
+            msg['config'] = self.config
+            self.redis_queue.rpush(self.processing_queue,
+                                   json.dumps(msg, cls=JsonEncoder))
+        return job_counter + 1
+
     def apply(self, function, on='edge', args=(), walltime='01:00:00', chunksize=1000, arraychunk=25, filters={}, query_string='', reapply=False, **kwargs):
         """
         A mirror of the apply function from the standard CandidateGraph object. This implementation
@@ -1586,8 +1627,11 @@ class NetworkCandidateGraph(CandidateGraph):
         Parameters
         ----------
 
-        function : string
-                   The function to apply
+        function : string / obj
+                   The function to apply. This can be either the full, importable path from
+                   this library or an arbitrary function that will be serialized. If the arbitrary
+                   function requires imports external to this library, those imports must be made
+                   within the function scope.
 
         on : str
              {'edge', 'edges', 'e', 0} for an edge
@@ -1652,20 +1696,28 @@ class NetworkCandidateGraph(CandidateGraph):
             on='overlaps', distribute_points_kwargs=distribute_points_kwargs)
         """
 
-        job_counter = self.queue_length()
+        job_counter = self.queue_length
 
         if not reapply:
             # Determine which obj will be called
-            onobj = self.apply_iterable_options[on]
-            res = []
-
+            if isinstance(on, str):
+                onobj = self.apply_iterable_options[on]
+            elif isinstance(on, list):
+                onobj = on
+                
+            # This method support arbitrary functions. The name needs to be a string for the log name.
             if not isinstance(function, (str, bytes)):
-                raise TypeError('Function argument must be a string or bytes object.')
+                function_name = function.__name__
+            else:
+                function_name = function
+
+            # Dispatch to either the database object message generator or the autocnet object message generator
             if isinstance(onobj, DeclarativeMeta):
                 job_counter = self._push_row_messages(onobj, on, function, walltime, filters, query_string, args, kwargs)
+            elif isinstance(onobj, list):
+                job_counter = self._push_iterable_message(onobj, function, walltime, args, kwargs)
             else:
                 job_counter = self._push_obj_messages(onobj, function, walltime, args, kwargs)
-
 
         # Submit the jobs
         rconf = self.config['redis']
@@ -1688,7 +1740,7 @@ class NetworkCandidateGraph(CandidateGraph):
                      mem_per_cpu=self.config['cluster']['processing_memory'],
                      time=walltime,
                      partition=self.config['cluster']['queue'],
-                     output=self.config['cluster']['cluster_log_dir']+f'/autocnet.{function}-%j')
+                     output=self.config['cluster']['cluster_log_dir']+f'/autocnet.{function_name}-%j')
         submitter.submit(array='1-{}%{}'.format(job_counter,arraychunk), chunksize=chunksize)
         return job_counter
 
@@ -2012,6 +2064,9 @@ class NetworkCandidateGraph(CandidateGraph):
 
         # Add nodes that do not overlap any images
         self.__init__(adjacency, node_id_map=adjacency_lookup)
+        
+        # Setup the edges
+        self._setup_edges()
 
     @staticmethod
     def clear_db(tables=None):

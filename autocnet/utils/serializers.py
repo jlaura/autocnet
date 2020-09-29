@@ -21,7 +21,6 @@ class JsonEncoder(json.JSONEncoder):
         if isinstance(obj,  shapely.geometry.base.BaseGeometry):
             return obj.wkt
         if callable(obj):
-            
             return encodebytes(dill.dumps(obj)).decode()
         return json.JSONEncoder.default(self, obj)
 
