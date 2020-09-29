@@ -1450,7 +1450,7 @@ class NetworkCandidateGraph(CandidateGraph):
                                         weights=json.dumps({})))
             session.add_all(to_add)
             session.commit()
-            print(len(to_add))
+
     def _setup_queues(self):
         """
         Setup a 2 queue redis connection for pushing and pulling work/results
@@ -1556,6 +1556,18 @@ class NetworkCandidateGraph(CandidateGraph):
             assert len(res) == self.queue_length
         return len(res)
 
+    def _push_iterable_message(self, iterable, function, walltime, args, kwargs):
+        for job_counter, item in enumerate(iterable):
+            msg = {'along':item,
+                    'func':function,
+                    'args':args,
+                    'kwargs':kwargs,
+                    'walltime':walltime}
+            msg['config'] = self.config
+            self.redis_queue.rpush(self.processing_queue,
+                                   json.dumps(msg, cls=JsonEncoder))
+        return job_counter + 1
+
     def apply(self, function, on='edge', args=(), walltime='01:00:00', chunksize=1000, arraychunk=25, filters={}, query_string='', reapply=False, **kwargs):
         """
         A mirror of the apply function from the standard CandidateGraph object. This implementation
@@ -1641,9 +1653,11 @@ class NetworkCandidateGraph(CandidateGraph):
 
         if not reapply:
             # Determine which obj will be called
-            onobj = self.apply_iterable_options[on]
-            res = []
-
+            if isinstance(on, str):
+                onobj = self.apply_iterable_options[on]
+            elif isinstance(on, list):
+                onobj = on
+                
             # This method support arbitrary functions. The name needs to be a string for the log name.
             if not isinstance(function, (str, bytes)):
                 function_name = function.__name__
@@ -1653,9 +1667,10 @@ class NetworkCandidateGraph(CandidateGraph):
             # Dispatch to either the database object message generator or the autocnet object message generator
             if isinstance(onobj, DeclarativeMeta):
                 job_counter = self._push_row_messages(onobj, on, function, walltime, filters, query_string, args, kwargs)
+            elif isinstance(onobj, list):
+                job_counter = self._push_iterable_message(onobj, function, walltime, args, kwargs)
             else:
                 job_counter = self._push_obj_messages(onobj, function, walltime, args, kwargs)
-
 
         # Submit the jobs
         rconf = self.config['redis']

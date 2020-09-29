@@ -50,14 +50,14 @@ def _instantiate_row(msg, ncg):
     return res
 
 def main(msg):
-
     ncg = NetworkCandidateGraph()
     ncg.config_from_dict(msg['config'])
-
     if msg['along'] in ['node', 'edge']:
         obj = _instantiate_obj(msg, ncg)
     elif msg['along'] in ['points', 'measures', 'overlaps']:
         obj = _instantiate_row(msg, ncg)
+    else:
+        obj = msg['along']
 
     # Grab the function and apply. This assumes that the func is going to
     # have a True/False return value. Basically, all processing needs to
@@ -67,6 +67,7 @@ def main(msg):
     func = msg['func']
     if callable(func):  # The function is a de-serialzied function
         msg['args'] = (obj, *msg['args'])
+        msg['kwargs']['ncg'] = ncg
     elif hasattr(obj, msg['func']):  # The function is a method on the object
         func = getattr(obj, msg['func'])
     else:  # The func is a function from a library to be imported
