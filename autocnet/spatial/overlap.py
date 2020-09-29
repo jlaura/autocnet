@@ -432,12 +432,12 @@ def place_points_in_image(image,
     print(f'Able to place {len(points)} points.')
     Points.bulkadd(points, ncg.Session)
 
-def place_ground_control_points(ncg,
-                                ground_mosaic, 
-                                distribute_points_kwargs={'nspts_func':lambda x: int(round(x,1)*1), 
-                                                          'ewpts_func':lambda x: int(round(x,1)*4)},
-                                size=(100,100),
-                                cam_type='isis'):
+def place_initial_ground_control_points(ncg,
+                                        ground_mosaic, 
+                                        distribute_points_kwargs={'nspts_func':lambda x: int(round(x,1)*1), 
+                                                                'ewpts_func':lambda x: int(round(x,1)*4)},
+                                        size=(100,100),
+                                        cam_type='isis'):
 
     """
 
@@ -480,22 +480,11 @@ def place_ground_control_points(ncg,
 
     fp_poly = ncg.footprint
     valid = compgeom.distribute_points_in_geom(fp_poly, method='new', **distribute_points_kwargs)
-    print(valid)
-    # Parallelize on valid.
-
+    valid = np.vstack(valid)
     
     points = []  # List of points that are bulk added to the database after processing
-    reference_lats = []
-    reference_lons = []
-    for v in valid:
-        reference_point = find_reference_point(v)
-        if not reference_point:
-            continue
-        reference_lats.append(reference_point[0])
-        reference_lons.append(reference_point[0])
-
     
-    linessamples = isis.point_info(ground_mosaic.file_name, reference_lons, reference_lats, 'ground')
+    linessamples = isis.point_info(ground_mosaic.file_name, valid[:,0], valid[:,1], 'ground')
     print(linessamples)
     return
 
