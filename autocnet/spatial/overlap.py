@@ -480,7 +480,8 @@ def place_initial_ground_control_points(ncg,
 
     fp_poly = ncg.footprint
     valid = compgeom.distribute_points_in_geom(fp_poly, method='new', **distribute_points_kwargs)
-    valid = np.vstack(valid)
+    
+    
     
     points = []  # List of points that are bulk added to the database after processing
     
