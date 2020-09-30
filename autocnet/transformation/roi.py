@@ -11,6 +11,8 @@ class Roi():
 
     Attributes
     ----------
+    data : ndarray/object
+           An ndarray or an object with a raster_size attribute
 
     x : float
         The x coordinate in image space
@@ -36,11 +38,12 @@ class Roi():
     bottom_y : int
                The bottom image coordinate in imge space
     """
-    def __init__(self, data, x, y, size_x=200, size_y=200):
+    def __init__(self, data, x, y, size_x=200, size_y=200, dtype=None, ndv=None):
         self.data = data
-
+        self.ndv = ndv
         self.x = x
         self.y = y
+        self.dtype = dtype
         self.size_x = size_x
         self.size_y = size_y
 
@@ -59,6 +62,21 @@ class Roi():
     @y.setter
     def y(self, y):
         self.ayr, self._y = modf(y)
+
+    @property
+    def ndv(self):
+        """
+        The no data value of the ROI. Used by the is_valid
+        property to determine if the ROI contains any null
+        pixels.
+        """
+        if hasattr(self.data, 'no_data_value'):
+            self._ndv = self.data.no_data_value   
+        return self._ndv
+
+    @ndv.setter
+    def ndv(self, ndv):
+        self._ndv = ndv
 
     @property
     def image_extent(self):
@@ -95,21 +113,46 @@ class Roi():
         ie = self.image_extent
         return (ie[1] - ie[0])/2, (ie[3]-ie[2])/2
 
-    def clip(self, dtype=None):
+    @property
+    def is_valid(self):
+        """
+        True if all elements in the clipped ROI are valid, i.e., 
+        no null pixels (as defined by the no data value (ndv)) are
+        present.
+        """
+        return self.ndv not in self.array
+
+    @property
+    def array(self):
+        """
+        The clopped array associated with this ROI.
+        """
         pixels = self.image_extent
         if isinstance(self.data, np.ndarray):
-            array = self.data[pixels[2]:pixels[3]+1,
-                                         pixels[0]:pixels[1]+1]
+             return self.data[pixels[2]:pixels[3]+1,pixels[0]:pixels[1]+1]
         else:
             # Have to reformat to [xstart, ystart, xnumberpixels, ynumberpixels]
             pixels = [pixels[0], pixels[2], pixels[1]-pixels[0], pixels[3]-pixels[2]]
-            array = self.data.read_array(pixels=pixels, dtype=dtype)
+            return self.data.read_array(pixels=pixels, dtype=self.dtype)
 
-        return array
+    def clip(self, dtype=None):
+        """
+        Compatibility function that makes a call to the array property. 
+        
+        Warning: The dtype passed in via this function resets the dtype attribute of this
+        instance. 
 
-    def transform(self, x, y):
+        Parameters
+        ----------
+        dtype : str
+                The datatype to be used when reading the ROI information if the read 
+                occurs through the data object using the read_array method. When using
+                this object when the data are a numpy array the dtype has not effect.
+
+        Returns
+        -------
+         : ndarray
+           The array attribute of this object.
         """
-        Convert arbitrary coordinates from the ROI coordinate system
-        to the full image coordinate system.
-        """
-        pass
+        self.dtype = dtype
+        return self.array

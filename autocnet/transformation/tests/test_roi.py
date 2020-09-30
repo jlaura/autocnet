@@ -3,6 +3,30 @@ import pytest
 
 from autocnet.transformation.roi import Roi
 
+@pytest.fixture
+def array_with_nodata():
+    arr = np.ones((10,10))
+    arr[5,5] = 0
+    return arr
+
+def test_geodata_with_ndv_is_valid(geodata_a):
+    roi = Roi(geodata_a, 5, 5)
+    assert roi.is_valid == False
+
+def test_geodata_is_valid(geodata_b):
+    roi = Roi(geodata_b, 5, 5)
+    assert roi.is_valid == True
+
+def test_center(array_with_nodata):
+    roi = Roi(array_with_nodata, 5, 5)
+    assert roi.center == (5,5)
+
+@pytest.mark.parametrize("ndv, truthy", [(None, True),
+                                         (0, False)])
+def test_is_valid(array_with_nodata, ndv, truthy):
+    roi = Roi(array_with_nodata, 2.5, 2.5, ndv=ndv)
+    assert roi.is_valid == truthy
+
 @pytest.mark.parametrize("x, y, axr, ayr",[
                          (10.1, 10.1, .1, .1),
                          (10.5, 10.5, .5, .5),
