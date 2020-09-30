@@ -1,5 +1,5 @@
 import os
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock, MagicMock, PropertyMock
 
 import networkx as nx
 import numpy as np
@@ -71,8 +71,8 @@ def default_configuration():
                   'username': 'postgres',
                   'password': 'NotTheDefault',
                   'host': 'localhost',
-                  'port': 5432,
-                  'pgbouncer_port': 5432,
+                  'port': 35432,
+                  'pgbouncer_port': 35432,
                   'name': 'travis_ci_test',
                   'timeout': 500},
               'pfeffernusse': {'url': ''},
@@ -120,14 +120,19 @@ def node_c(geodata_c):
 #TODO: Can these be a single parameterized fixture - so much boilerplate!
 @pytest.fixture(scope='session')
 def geodata_a():
-    a = Mock(spec=GeoDataset)
-    a.pixel_to_latlon = MagicMock(side_effect=lambda x, y: (x, y))
+    arr = np.ones((100,100))
+    arr[5,5] = -3.40282266e+38
+    a = Mock(spec=GeoDataset, raster_size=[10,10], no_data_value=-3.40282266e+38)
+    a.pixel_to_latlon = MagicMock(side_effect=lambda x, y: (x, y))    
+    a.read_array = MagicMock(return_value=arr)
     return a
 
 @pytest.fixture(scope='session')
 def geodata_b():
-    b = Mock(spec=GeoDataset)
+    arr = np.ones((100,100))
+    b = Mock(spec=GeoDataset, raster_size=[10,10])
     b.pixel_to_latlon = MagicMock(side_effect=lambda x, y: (x, y))
+    b.read_array = MagicMock(return_value=arr)
     return b
 
 @pytest.fixture(scope='session')
