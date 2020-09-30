@@ -1027,9 +1027,6 @@ def subpixel_register_point(pointid,
                 resultlog.append(currentlog)
                 continue
 
-            # Check here for move distance
-
-
             # Update the measure
             measure.sample = new_x
             measure.line = new_y
