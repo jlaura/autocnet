@@ -313,8 +313,8 @@ def subpixel_transformed_template(sx, sy, dx, dy,
     s_roi = roi.Roi(s_img, sx, sy, size_x=image_size[0], size_y=image_size[1])
     d_roi = roi.Roi(d_img, dx, dy, size_x=template_size_x, size_y=template_size_y)
 
-    if not s_roi or not d_roi:
-        return None, None, None, None
+    if not s_roi.is_valid or not d_roi.is_valid:
+        return [None] * 4
 
     try:
         s_image_dtype = isis2np_types[pvl.load(s_img.file_name)["IsisCube"]["Core"]["Pixels"]["Type"]]
@@ -471,6 +471,9 @@ def subpixel_template(sx, sy, dx, dy,
     s_roi = roi.Roi(s_img, sx, sy, size_x=image_size[0], size_y=image_size[1])
     d_roi = roi.Roi(d_img, dx, dy, size_x=template_size_x, size_y=template_size_y)
 
+    if not s_roi.is_valid or not d_roi.is_valid:
+        return [None] * 4
+        
     try:
         s_image_dtype = isis2np_types[pvl.load(s_img.file_name)["IsisCube"]["Core"]["Pixels"]["Type"]]
     except:
