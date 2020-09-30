@@ -365,7 +365,8 @@ def subpixel_transformed_template(sx, sy, dx, dy,
     shift_x, shift_y, metrics, corrmap = func(bytescale(buffered_template), s_image, **kwargs)
 
     # Hard check here to see if we are on the absolute edge of the template
-    if 0 in np.unravel_index(corrmap.argmax(), corrmap.shape):
+    max_coord = np.unravel_index(corrmap.argmax(), corrmap.shape)
+    if 0 in max_coord or corrmap.shape[0]-1 == max_coord[0] or corrmap.shape[1]-1 == max_coord[1]:
         warnings.warn('Maximum correlation is at the edge of the template. Results are ambiguous.', UserWarning)
         return [None] * 4
 
@@ -487,21 +488,22 @@ def subpixel_template(sx, sy, dx, dy,
     s_image = bytescale(s_roi.clip(dtype=s_image_dtype))
     d_template = bytescale(d_roi.clip(dtype=d_template_dtype))
     
-    if verbose:
-        fig, axs = plt.subplots(1, 3, figsize=(20,10))
-        axs[0].imshow(s_image, cmap='Greys')
-        axs[1].imshow(d_template, cmap='Greys')
-        axs[3].imshow(corrmap)
-        plt.show()
-    
     if (s_image is None) or (d_template is None):
         return None, None, None, None
 
     # Apply the matcher function
     shift_x, shift_y, metrics, corrmap = func(d_template, s_image, **kwargs)
 
+    if verbose:
+        fig, axs = plt.subplots(1, 3, figsize=(20,10))
+        axs[0].imshow(s_image, cmap='Greys')
+        axs[1].imshow(d_template, cmap='Greys')
+        axs[3].imshow(corrmap)
+        plt.show()
+
     # Hard check here to see if we are on the absolute edge of the template
-    if 0 in np.unravel_index(corrmap.argmax(), corrmap.shape):
+    max_coord = np.unravel_index(corrmap.argmax(), corrmap.shape)
+    if 0 in max_coord or corrmap.shape[0]-1 == max_coord[0] or corrmap.shape[1]-1 == max_coord[1]:
         warnings.warn('Maximum correlation is at the edge of the template. Results are ambiguous.', UserWarning)
         return [None] * 4
 
