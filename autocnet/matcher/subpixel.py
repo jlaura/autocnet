@@ -680,7 +680,7 @@ def geom_match(destination_cube,
     source_cube: plio.io.io_gdal.GeoDataset
                  The image that is transformed and matched into the destination_cube
 
-x    bcenter_x:  int
+    bcenter_x:  int
                 sample location of source measure in base_cube
 
     bcenter_y:  int
