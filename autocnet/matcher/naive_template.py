@@ -59,7 +59,7 @@ def pattern_match_autoreg(template, image, subpixel_size=3, max_scaler=0.2, func
 
     if area.shape != (subpixel_size+2, subpixel_size+2):
         print("Max correlation is too close to the boundary.")
-        return None, None, 0
+        return None, None, 0, result
 
     # Find the max on the edges, scale just like autoreg (but why?)
     edge_max = np.max(np.vstack([area[0], area[-1], area[:,0], area[:,-1]]))
@@ -83,7 +83,7 @@ def pattern_match_autoreg(template, image, subpixel_size=3, max_scaler=0.2, func
     y -= (image.shape[0] / 2) - (template.shape[0] / 2)
     x -= (image.shape[1] / 2) - (template.shape[1] / 2)
 
-    return x, y, max_corr
+    return x, y, max_corr, result
 
 def pattern_match(template, image, upsampling=16, metric=cv2.TM_CCOEFF_NORMED, error_check=False):
     """

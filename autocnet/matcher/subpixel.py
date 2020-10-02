@@ -358,6 +358,7 @@ def subpixel_transformed_template(sx, sy, dx, dy,
     buffered_template = scaled_roi[template_buffer:-template_buffer,template_buffer:-template_buffer]
 
     # Apply the matcher on the transformed array
+
     shift_x, shift_y, metrics, corrmap = func(bytescale(buffered_template), s_image, **kwargs)
 
     if verbose:
@@ -644,7 +645,8 @@ def geom_match(destination_cube,
                bcenter_y,
                template_kwargs={"image_size":(59,59), "template_size":(31,31)},
                phase_kwargs=None,
-               verbose=True):
+               verbose=True, 
+               **kwargs):
     """
     Propagates a source measure into destination images and then perfroms subpixel registration.
     Measure creation is done by projecting the (lon, lat) associated with the source measure into the
@@ -778,7 +780,8 @@ def geom_match(destination_cube,
                                                 destination_cube, source_cube, 
                                                 affine,
                                                 verbose=verbose,
-                                                **template_kwargs)
+                                                **template_kwargs,
+                                                **kwargs)
 
     x, y, metric, temp_corrmap = restemplate
     
@@ -971,8 +974,7 @@ def subpixel_register_point(pointid,
                 new_x, new_y, dist, metric,  _ = geom_match(source_node.geodata, destination_node.geodata,
                                                         source.sample, source.line,
                                                         template_kwargs=subpixel_template_kwargs,
-                                                        phase_kwargs=iterative_phase_kwargs,
-                                                        size_x=100, size_y=100)
+                                                        phase_kwargs=iterative_phase_kwargs)
             except Exception as e:
                 print(f'geom_match failed on measure {measure.id} with exception -> {e}')
                 measure.ignore = True

@@ -31,8 +31,9 @@ CREATE OR REPLACE FUNCTION validate_points()
 $BODY$
 BEGIN
  IF (SELECT COUNT(*)
-	 FROM MEASURES
-	 WHERE pointid = NEW.pointid AND "measureIgnore" = False) < 2
+	 FROM MEASURES 
+   JOIN points ON points.id = NEW.pointid
+	 WHERE pointid = NEW.pointid AND "measureIgnore" = False AND points."pointType" != 3) < 2
  THEN
    UPDATE points
      SET "pointIgnore" = True

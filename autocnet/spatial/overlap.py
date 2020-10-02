@@ -14,6 +14,7 @@ from autocnet.graph.node import NetworkNode
 from autocnet.io.db.model import Images, Measures, Overlay, Points, JsonEncoder
 from autocnet.spatial import isis
 from autocnet.matcher.cpu_extractor import extract_most_interesting
+from autocnet.matcher.subpixel import geom_match
 from autocnet.transformation.spatial import reproject, og2oc, oc2og
 from autocnet.transformation import roi
 
@@ -40,6 +41,46 @@ INSERT INTO overlay(intersections, geom) SELECT row.intersections, row.geom FROM
 (SELECT iid.geom, array_agg(iid.id) AS intersections
   FROM iid GROUP BY iid.geom) AS row WHERE array_length(intersections, 1) > 1;
 """
+
+def add_measures_to_nodes(nodes, gnd, cam_type='csm', measuretype=2, choosername='place_points_in_overlap'):
+        """
+        Given a list of nodes and a ground coordinate (lon, lat), attempt to add measures to 
+        the node at the given coordinate using a sensor model.
+
+        Parameters
+        ----------
+        nodes : iterable
+                of node objects
+
+        gnd : tuple
+              in the form (x,y,z) if cam_type='csm' or (lon, lat) if cam_type='isis'
+
+            
+        """
+        measures = []
+        for node in nodes:
+            if cam_type == "csm":
+                gnd = csmapi.EcefCoord(*gnd)
+                image_coord = node.camera.groundToImage(gnd)
+                sample, line = image_coord.samp, image_coord.line
+            if cam_type == "isis":
+                try:
+                    lon, lat = gnd
+                    line, sample = isis.ground_to_image(node["image_path"], lon, lat)
+                except ProcessError as e:
+                    if 'Requested position does not project in camera model' in e.stderr:
+                        print(f'interesting point ({lon},{lat}) does not project to image {node["image_path"]}')
+                        continue
+            measure = Measures(sample=sample,
+                                line=line,
+                                apriorisample=sample,
+                                aprioriline=line,
+                                imageid=node['node_id'],
+                                serial=node.isis_serial,
+                                measuretype=measuretype,
+                                choosername=choosername)
+            measures.append(measure)
+        return measures
 
 def place_points_in_overlaps(size_threshold=0.0007,
                              distribute_points_kwargs={},
@@ -432,28 +473,33 @@ def place_points_in_image(image,
     print(f'Able to place {len(points)} points.')
     Points.bulkadd(points, ncg.Session)
 
-def place_initial_ground_control_points(ncg,
-                                        ground_mosaic, 
-                                        distribute_points_kwargs={'nspts_func':lambda x: int(round(x,1)*1), 
-                                                                'ewpts_func':lambda x: int(round(x,1)*4)},
-                                        size=(100,100),
-                                        cam_type='isis'):
+def place_ground_control_point(coordinate,
+                               ground_mosaic, 
+                               size=(100,100),
+                               cam_type='isis', 
+                               template_kwargs={"image_size":(121,121), "template_size":(61, 61)},
+                               cost_func=lambda x,y:y,
+                               threshold=0.6,
+                               ncg=None, 
+                               Session=None, 
+                               **kwargs):
 
     """
 
     """
 
-    def find_reference_point(v):
-        linessamples = isis.point_info(ground_mosaic.file_name, v[0], v[1], 'ground')
+    def find_reference_point(lon, lat):
+        linessamples = isis.point_info(ground_mosaic.file_name, lon, lat, 'ground')
         if linessamples is None:
             print('unable to find point in ground image')
-            return
+            return [None] * 4
         line = linessamples[0].get('Line')
         sample = linessamples[0].get('Sample')
 
         image = roi.Roi(ground_mosaic, sample, line, size_x=size[0], size_y=size[1])
         image_roi = image.clip(dtype="uint64")
 
+        # Get the most interesting feature in the ROI and recenter
         interesting = extract_most_interesting(image_roi,  extractor_parameters={'nfeatures':30})
 
         # kps are in the image space with upper left origin, so convert to
@@ -462,49 +508,36 @@ def place_initial_ground_control_points(ncg,
         newsample = left_x + interesting.x
         newline = top_y + interesting.y
 
+        # Get the lon, lat from the new iamge coordinate
         newpoint = isis.point_info(ground_mosaic.file_name, newsample, newline, 'image')
+        
         lon = newpoint[0].get('PositiveEast360Longitude')
         lat = newpoint[0].get('PlanetocentricLatitude')
 
-        if not (compgeom.xy_in_polygon(lon, lat, fp_poly)):
-                print('Interesting point not in mosaic area, ignore')
-                return
+        # Removing because these points sbould be, by definition, inside the poly.
+        #if not (compgeom.xy_in_polygon(lon, lat, fp_poly)):
+        #        print('Interesting point not in mosaic area, ignore')
+        #        return
 
-        return lat, lon
+        return lon, lat, newsample, newline
 
     if isinstance(ground_mosaic, str):
         ground_mosaic = GeoDataset(ground_mosaic)
 
-    warnings.warn('This function is not well tested. No tests currently exist \
-    in the test suite for this version of the function.')
+    lon, lat = coordinate
 
-    fp_poly = ncg.footprint
-    valid = compgeom.distribute_points_in_geom(fp_poly, method='new', **distribute_points_kwargs)
+    print(f'Attempting to place a ground point near {lon}, {lat}')
+    lon, lat, base_x, base_y = find_reference_point(lon, lat)
     
-    
-    
-    points = []  # List of points that are bulk added to the database after processing
-    
-    linessamples = isis.point_info(ground_mosaic.file_name, valid[:,0], valid[:,1], 'ground')
-    print(linessamples)
-    return
+    if not lon:
+        return
 
-        
-    """if linessamples is None:
-        print('unable to find point in ground image')
-        continue"""
-    line = linessamples[0].get('Line')
-    sample = linessamples[0].get('Sample')
+    px, py = ncg.dem.latlon_to_pixel(lat, lon)
+    height = ncg.dem.read_array(1, [px, py, 1, 1])[0][0]
 
-    config = ncg.config
-    dem = ncg.dem
+    semi_major = ncg.config['spatial']['semimajor_rad']
+    semi_minor = ncg.config['spatial']['semiminor_rad']
 
-    px, py = dem.latlon_to_pixel(lat, lon)
-    height = dem.read_array(1, [px, py, 1, 1])[0][0]
-
-    semi_major = config['spatial']['semimajor_rad']
-    semi_minor = config['spatial']['semiminor_rad']
-    # The CSM conversion makes the LLA/ECEF conversion explicit
     # reprojection takes ographic lat
     lon_og, lat_og = oc2og(lon, lat, semi_major, semi_minor)
     x, y, z = reproject([lon_og, lat_og, height],
@@ -513,38 +546,75 @@ def place_initial_ground_control_points(ncg,
     
     # Create the point
     point_geom = shapely.geometry.Point(x, y, z)
-    point = Points(overlapid=-1,
-                    apriori=point_geom,
+    point = Points(apriori=point_geom,
                     adjusted=point_geom,
                     pointtype=3,
                     cam_type=cam_type,
                     identifier='PlaceGroundPoints')
 
-    """# Find all nodes (images) that intersect the point and place an apriori measure
+    
+    # Find all nodes (images) that intersect the point and place an apriori measure
     nodes = ncg.intersecting_nodes(lat, lon)
+    if not nodes:
+        print('No intersecting nodes at these coordinates.')
+
+    best = -np.inf
+    reference_node = None
+    reference_x = None
+    reference_y = None
 
     for node in nodes:
-        if cam_type == "csm":
-            image_coord = node.camera.groundToImage(gnd)
-            sample, line = image_coord.samp, image_coord.line
-        if cam_type == "isis":
-            try:
-                line, sample = isis.ground_to_image(node["image_path"], lon, lat)
-            except ProcessError as e:
-                if 'Requested position does not project in camera model' in e.stderr:
-                    print(f'interesting point ({geocent_lon},{geocent_lat}) does not project to image {node["image_path"]}')
-                    continue
+        newx, newy, dist, metric, _ = geom_match(ground_mosaic, node.geodata, base_x, base_y, template_kwargs=template_kwargs, **kwargs)
+        if newx is None:
+            continue
 
-        point.measures.append(Measures(sample=sample,
-                                    line=line,
-                                    apriorisample=sample,
-                                    aprioriline=line,
+        cost = cost_func(dist, metric)
+        if cost >= threshold:
+            best = cost
+            reference_node = node
+            reference_x = newx
+            reference_y = newy
+
+    # 1+ matches to the base were good. The reference node is the best
+    if reference_node:
+        # Then match the best CTX image to all other CTX images that overalap
+
+        # Add the best measure first so that it is used as the reference
+
+        ref_measure = Measures(sample=reference_x,
+                                    line=reference_y,
+                                    apriorisample=reference_x,
+                                    aprioriline=reference_y,
                                     imageid=node['node_id'],
                                     serial=node.isis_serial,
                                     measuretype=3,
-                                    choosername='place_ground_control_points')) 
-        print(v, 'measure added')  """     
-    points.append(point)
-    print(f'Able to place {len(points)} points.')
-    #Points.bulkadd(points, ncg.Session)
+                                    choosername='place_ground_control_points')
+        point.measures.append(ref_measure)
+        # Now use the matched reference node to get a lat/lon 
+        pointinfo = isis.point_info(reference_node["image_path"], reference_x, reference_y, point_type="image")
+
+        # This is ocentric because we within the ISIS pipeline the whole time
+        lon = pointinfo['PositiveEast360Longitude'].value
+        lat = pointinfo['PlanetocentricLatitude'].value
+    else:
+        print('Failed to place a reference point.')
+        return
+    # Remove the reference node from the node list so we do not double add a measure
+    nodes.remove(reference_node)
+
+    # Attempt to add measures to the other nodes
+    measures = add_measures_to_nodes(nodes, 
+                                    (lon, lat), 
+                                    measuretype=3, # ground
+                                    cam_type=cam_type, 
+                                    choosername='place_ground_control_points')
+
+    # Add the new measures to the point object
+    point.measures += measures
+
+    with ncg.session_scope() as session:
+        session.add(point)
+        session.commit()
+        print(f'Sucessfully added point {point.id} to the database with {len(point.measures)} measures.')
+
     return
