@@ -1,1 +1,1 @@
-from autocnet.io.db import adaptors  # imported here to get these registered
+from autocnet.io.db import adapters  # imported here to get these registered
