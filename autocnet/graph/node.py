@@ -514,7 +514,6 @@ class NetworkNode(Node):
 
     def populate_db(self):
         with self.parent.session_scope() as session:
-            ip = self['image_path']
             res = session.query(Images).filter(Images.path == self['image_path']).first()
             if res:
                 # Image already exists
