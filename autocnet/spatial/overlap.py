@@ -170,6 +170,7 @@ def place_points_in_overlap(overlap,
             nn = NetworkNode(node_id=id, image_path=res.path)
             nn.parent = ncg
             nodes.append(nn)
+    
     print(f'Attempting to place measures in {len(nodes)} images.')
     for v in valid:
         lon = v[0]
@@ -181,8 +182,8 @@ def place_points_in_overlap(overlap,
         height = ncg.dem.read_array(1, [px, py, 1, 1])[0][0]
 
         # Need to get the first node and then convert from lat/lon to image space
-        for reference_index, node in enumerate(nodes):
-            # reference_index is the index into the list of measures for the image that is not shifted and is set at the
+        for reference_index, node in enumerate(nodes):  
+            # reference_index is the index into the list of measures for the image that is not shifted and is set at the 
             # reference against which all other images are registered.
             if cam_type == "isis":
                 try:
@@ -213,7 +214,7 @@ def place_points_in_overlap(overlap,
             if interesting is not None:
                 # We have found an interesting feature and have identified the reference point.
                 break
-
+ 
         if interesting is None:
             warnings.warn('Unable to find an interesting point, falling back to the a priori pointing')
             newsample = sample
@@ -279,7 +280,7 @@ def place_points_in_overlap(overlap,
                        overlapid=overlap.id,
                        apriori=point_geom,
                        adjusted=point_geom,
-                       pointtype=point_type, # Would be 3 or 4 for ground
+                       pointtype=2, # Would be 3 or 4 for ground
                        cam_type=cam_type,
                        reference_index=reference_index)
 
@@ -310,7 +311,7 @@ def place_points_in_overlap(overlap,
         if len(point.measures) >= 2:
             points.append(point)
     print(f'Able to place {len(points)} points.')
-    Points.bulkadd(points, ncg.Session)
+    #Points.bulkadd(points, ncg.Session)
     return points
 
 def place_points_in_image(image,
