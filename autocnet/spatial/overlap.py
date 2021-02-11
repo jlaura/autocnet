@@ -170,7 +170,6 @@ def place_points_in_overlap(overlap,
             nn = NetworkNode(node_id=id, image_path=res.path)
             nn.parent = ncg
             nodes.append(nn)
-
     print(f'Attempting to place measures in {len(nodes)} images.')
     for v in valid:
         lon = v[0]
