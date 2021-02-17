@@ -63,7 +63,6 @@ def place_points_in_overlaps(size_threshold=0.0007,
 
     size_threshold : float
                      overlaps with area <= this threshold are ignored
-
     cam_type : str
                Either 'csm' (default) or 'isis'. The type of sensor model to use.
 
@@ -280,7 +279,7 @@ def place_points_in_overlap(overlap,
                        overlapid=overlap.id,
                        apriori=point_geom,
                        adjusted=point_geom,
-                       pointtype=2, # Would be 3 or 4 for ground
+                       pointtype=point_type, # Would be 3 or 4 for ground
                        cam_type=cam_type,
                        reference_index=reference_index)
 
