@@ -20,8 +20,8 @@ def find_ground_reference(point,
                            match_kwargs={},
                            geom_kwargs={"size_x": 16, "size_y": 16},
                            threshold=0.9,
-                           cost_func=lambda x,y: (0*x)+y),
-                           verbose=False:
+                           cost_func=lambda x,y: (0*x)+y,
+                           verbose=False):
     print(point.id)
     geom_func = check_geom_func(geom_func)
     match_func = check_match_func(match_func)
