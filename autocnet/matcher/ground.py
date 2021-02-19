@@ -18,8 +18,10 @@ def find_ground_reference(point,
                            geom_func='simple', 
                            match_func='classic', 
                            match_kwargs={},
+                           geom_kwargs={"size_x": 16, "size_y": 16},
                            threshold=0.9,
-                           cost_func=lambda x,y: (0*x)+y):
+                           cost_func=lambda x,y: (0*x)+y),
+                           verbose=False:
     print(point.id)
     geom_func = check_geom_func(geom_func)
     match_func = check_match_func(match_func)
@@ -62,8 +64,8 @@ def find_ground_reference(point,
                                             bsample, bline,
                                             match_func = match_func,
                                             match_kwargs = match_kwargs,
-                                            size_x=21,size_y=21,
-                                            verbose=False)
+                                            verbose=verbose,
+                                            **geom_kwargs)
         if x == None:
             print(f'Unable to match image {node["image_name"]} to {baseimage}.')
             continue
