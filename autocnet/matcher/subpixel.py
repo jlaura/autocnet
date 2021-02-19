@@ -488,6 +488,8 @@ def subpixel_template_classic(sx, sy, dx, dy,
     autocnet.matcher.naive_template.pattern_match_autoreg : for the jwargs that can be passed to the autoreg style matcher
     """
 
+    # Image or source is the reference that the template is registered to
+
     image_size = check_image_size(image_size)
     template_size = check_image_size(template_size)
 
@@ -939,17 +941,17 @@ def geom_match_simple(base_cube,
         axs[0][2].axvline(x=oarr.shape[1]/2, color="red", linestyle="-", alpha=1)
         axs[0][2].set_title("Original Registered Image")
 
-        darr = roi.Roi(dst_arr, x, y, size_x, size_y).clip()
-        axs[0][1].imshow(bytescale(darr, cmin=0), cmap="Greys_r")
-        axs[0][1].axhline(y=darr.shape[1]/2, color="red", linestyle="-", alpha=1)
-        axs[0][1].axvline(x=darr.shape[1]/2, color="red", linestyle="-", alpha=1)
-        axs[0][1].set_title("Projected Registered Image")
-
         barr = roi.Roi(base_arr, bcenter_x, bcenter_y, size_x, size_y).clip()
         axs[0][0].imshow(bytescale(barr, cmin=0), cmap="Greys_r")
         axs[0][0].axhline(y=barr.shape[1]/2, color="red", linestyle="-", alpha=1)
         axs[0][0].axvline(x=barr.shape[1]/2, color="red", linestyle="-", alpha=1)
         axs[0][0].set_title("Base")
+
+        darr = roi.Roi(dst_arr, x, y, size_x, size_y).clip()
+        axs[0][1].imshow(bytescale(darr, cmin=0), cmap="Greys_r")
+        axs[0][1].axhline(y=darr.shape[1]/2, color="red", linestyle="-", alpha=1)
+        axs[0][1].axvline(x=darr.shape[1]/2, color="red", linestyle="-", alpha=1)
+        axs[0][1].set_title("Projected Registered Image")
 
         axs[1][0].imshow(bytescale(darr.astype("f")/barr.astype("f")), cmap="Greys_r", alpha=.6)
         axs[1][0].axhline(y=barr.shape[1]/2, color="red", linestyle="-", alpha=.5)
@@ -1356,8 +1358,7 @@ def subpixel_register_measure(measureid,
         
         if source.measureid == measureid:
             currentlog['status'] = f'Unable to register this measure. Measure {measureid} is the reference measure.'
-            return 
-            resultlog
+            return resultlog
 
         try:
             new_x, new_y, dist, metric = geom_match_simple(source_node.geodata, destination_node.geodata,
@@ -1454,6 +1455,9 @@ def subpixel_register_point(pointid,
 
     if not ncg.Session:
         raise BrokenPipeError('This func requires a database session from a NetworkCandidateGraph.')
+    
+    if isinstance(pointid, Points):
+        pointid = pointid.id
     
     with ncg.session_scope() as session:
         measures = session.query(Measures).filter(Measures.pointid == pointid).order_by(Measures.id).all()
