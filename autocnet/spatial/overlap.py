@@ -517,3 +517,133 @@ def place_points_in_image(image,
             points.append(point)
     print(f'Able to place {len(points)} points.')
     Points.bulkadd(points, ncg.Session)
+
+def find_most_interesting_ground(apriori_lon_lat, baseimage, cam_type='isis',size=71, ncg=None, Session=None):
+    """
+
+    """
+    if cam_type == 'csm':
+        raise ValueError('Unable to find interesting ground using a CSM sensor.')
+
+    if not ncg.Session:
+        raise BrokenPipeError('This func requires a database session from a NetworkCandidateGraph.')
+        
+    lon = apriori_lon_lat[0]
+    lat = apriori_lon_lat[1]
+
+    """ THIS SHOULD BE EXTRACTED"""
+    # Take the lon,lat and convert into sample,line
+    if cam_type == "isis":
+        try:
+            line, sample = isis.ground_to_image(baseimage, lon, lat)
+        except ProcessError as e:
+            if 'Requested position does not project in camera model' in e.stderr:
+                print(f'point ({geocent_lon}, {geocent_lat}) does not project to reference image {node["image_path"]}')
+    """END THIS SHOULD BE EXTRACTED"""
+    geodata = GeoDataset(baseimage)
+    
+    # Get the
+    image_roi = roi.Roi(geodata, sample, line, size_x=size, size_y=size)
+    image = image_roi.clip()
+    image = np.array(image+128, dtype=np.uint8)
+
+    interesting = extract_most_interesting(image)
+    if interesting is None:
+        return
+    # kps are in the image space with upper left origin and the roi
+    # could be the requested size or smaller if near an image boundary.
+    # So use the roi upper left_x and top_y for the actual origin.
+    left_x, _, top_y, _ = image_roi.image_extent
+    newsample = left_x + interesting.x
+    newline = top_y + interesting.y
+    
+    # Get the updated lat/lon from the feature in the node
+    if cam_type == "isis":
+        try:
+            # Returns a list even if only one sample,line pair are returned.
+            p = isis.point_info(baseimage, newsample, newline, point_type="image")[0]
+        except ProcessError as e:
+            if 'Requested position does not project in camera model' in e.stderr:
+                print(baseimage)
+                print(f'interesting point ({newsample}, {newline}) does not project back to ground')
+        lat = p['PlanetographicLatitude']
+        lon = p['PositiveEast360Longitude']
+    
+        # Convert from lat/lon to x,y,z
+        px, py = ncg.dem.latlon_to_pixel(lat, lon)
+        height = ncg.dem.read_array(1, [px, py, 1, 1])[0][0]
+        
+        # Get the BCEF coordinate from the lon, lat
+        semi_major = ncg.config['spatial']['semimajor_rad']
+        semi_minor = ncg.config['spatial']['semiminor_rad']
+        x, y, z = reproject([lon, lat, height],
+                            semi_major, semi_minor, 'latlon', 'geocent')
+        
+        
+        point_geom = shapely.geometry.Point(x, y, z)
+        point = Points(overlapid=None,
+                       apriori=point_geom,
+                       adjusted=point_geom,
+                       pointtype=3, # constrained
+                       cam_type='isis',
+                       ignore=True)  # Default to ignoring the point because it will have no measures.
+
+        # Add a single measure into the db that tracks the base image path and location
+        # Use the serial number in the measures
+        m = Measures(sample=newsample,
+                    line=newline,
+                    apriorisample=newsample,
+                    aprioriline=newline,
+                    imageid=None,
+                    serial=baseimage,
+                    measuretype=0,
+                    choosername='find_most_interesting_ground')
+        point.measures.append(m)
+        with ncg.session_scope() as session:
+            session.add(point)
+
+def add_measures_to_point(pointid, cam_type='isis', ncg=None, Session=None):
+    if not ncg.Session:
+        raise BrokenPipeError('This func requires a database session from a NetworkCandidateGraph.')
+    
+    if isinstance(pointid, Points):
+        pointid = pointid.id
+
+    
+    with ncg.session_scope() as session:
+        point = session.query(Points).filter(Points.id == pointid).one()
+        point_lon = point.geom.x
+        point_lat = point.geom.y
+
+        reference_index = point.reference_index
+        reference_measure = point.measures[reference_index]
+        reference_image_id = reference_measure.imageid
+
+        images = session.query(Images).filter(Images.geom.ST_Intersects(point._geom)).all()
+        print(f'Placing measures into {len(images)-1} images.')
+        for image in images:
+            if image.id == reference_image_id:
+                continue  # This is the reference image, so pass on adding a new measure
+            
+            if cam_type == "isis":
+                try:
+                    line, sample = isis.ground_to_image(image.path, point_lon, point_lat)
+                except ProcessError as e:
+                    if 'Requested position does not project in camera model' in e.stderr:
+                        print(f'interesting point ({point_lon},{point_lat}) does not project to image {image.name}')
+
+            point.measures.append(Measures(sample=sample,
+                                           line=line,
+                                           apriorisample=sample,
+                                           aprioriline=line,
+                                           imageid=image.id,
+                                           serial=image.serial,
+                                           measuretype=3,
+                                           choosername='add_measures_to_point')) 
+            i = 0
+            for m in point.measures:
+                if m.measuretype == 2 or m.measuretype == 3:
+                    i += 1
+            if i >= 2:
+                point.ignore = False      
+    return
