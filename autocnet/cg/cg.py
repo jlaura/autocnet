@@ -471,7 +471,7 @@ def distribute_points_in_geom(geom, method="classic",
 
     Returns
     -------
-    valid : list
+    valid : ndarray
             of valid points in the form (x,y) or (lon,lat)
 
     """
@@ -485,8 +485,6 @@ def distribute_points_in_geom(geom, method="classic",
 
     coords = list(zip(*geom.envelope.exterior.xy))
    
-
-    # This logic is kwarg swapping - need to trace this logic.
     short = np.inf
     long = -np.inf
     shortid = 0
@@ -538,7 +536,7 @@ def distribute_points_in_geom(geom, method="classic",
             valid = point_distribution_func(geom, nspts, ewpts, Session=Session, **kwargs)
     else:
         print('WTF Willy')
-    return valid
+    return np.asarray(valid)
 
 
 def alpha_shape(points, alpha):
