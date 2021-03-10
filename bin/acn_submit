@@ -13,7 +13,7 @@ from autocnet.io.db.redis_queue import pop_computetime_push, finalize
 from autocnet.graph.network import NetworkCandidateGraph
 from autocnet.graph.node import NetworkNode
 from autocnet.graph.edge import NetworkEdge
-from autocnet.io.db.model import Points, Measures, Overlay
+from autocnet.io.db.model import Points, Measures, Overlay, GroundPoint
 from autocnet.utils.utils import import_func
 from autocnet.utils.serializers import JsonEncoder, object_hook
 
@@ -54,7 +54,7 @@ def main(msg):
     ncg.config_from_dict(msg['config'])
     if msg['along'] in ['node', 'edge']:
         obj = _instantiate_obj(msg, ncg)
-    elif msg['along'] in ['points', 'measures', 'overlaps', 'images']:
+    elif msg['along'] in ['points', 'measures', 'overlaps', 'images', 'groundpoints']:
         obj = _instantiate_row(msg, ncg)
     else:
         obj = msg['along']

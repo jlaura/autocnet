@@ -246,6 +246,7 @@ class Overlay(BaseMixin, Base):
     points = relationship('Points',
                           primaryjoin='func.ST_Contains(foreign(Overlay.geom), Points.geom).as_comparison(1,2)',
                           backref=backref('overlay', uselist=False),
+                          sync_backref=False,
                           viewonly=True,
                           uselist=True)
 
@@ -365,6 +366,37 @@ class Points(BaseMixin, Base):
     #def subpixel_register(self, Session, pointid, **kwargs):
     #    subpixel.subpixel_register_point(args=(Session, pointid), **kwargs)
 
+class GroundPoint(BaseMixin, Base):
+    __tablename__ = 'groundpoints'
+    latitudinal_srid = -1
+
+    id = Column(Integer,primary_key=True, autoincrement=True)
+    path = Column(String, nullable=False)
+    choosername = Column("ChooserName", String)
+    apriorisample = Column(Float)
+    aprioriline = Column(Float)
+    sample = Column(Float, nullable=False)
+    line = Column(Float, nullable=False)
+    _geom = Column("geom", Geometry('POINT', srid=latitudinal_srid, dimension=2, spatial_index=True))
+    ignore = Column(Boolean, default=False)
+    
+    @hybrid_property
+    def geom(self):
+        try:
+            return to_shape(self._geom)
+        except:
+            return self._geom
+
+    @geom.setter
+    def geom(self, newgeom):
+        if isinstance(newgeom, osgeo.ogr.Geometry):
+            # If an OGR geom, convert to shapely
+            newgeom = shapely.wkt.loads(newgeom.ExportToWkt())
+        if newgeom is None:
+            self._geom = None
+        else:
+            self._geom = from_shape(newgeom, srid=self.latitudinal_srid)
+
 class MeasureType(enum.IntEnum):
     """
     Enum to enforce measure type for ISIS control networks
@@ -443,7 +475,7 @@ def try_db_creation(engine, config):
     Points.rectangular_srid = rectangular_srid
     Points.semimajor_rad = spatial['semimajor_rad']
     Points.semiminor_rad = spatial['semiminor_rad']
-    for cls in [Points, Overlay, Images, Keypoints, Matches]:
+    for cls in [Points, Overlay, Images, Keypoints, Matches, GroundPoint]:
         setattr(cls, 'latitudinal_srid', latitudinal_srid)
 
     # If the table does not exist, this will create it. This is used in case a
@@ -452,5 +484,6 @@ def try_db_creation(engine, config):
                                      Edges.__table__, Costs.__table__, Matches.__table__,
                                      Cameras.__table__, Points.__table__,
                                      Measures.__table__, Images.__table__,
-                                     Keypoints.__table__])
+                                     Keypoints.__table__,
+                                     GroundPoint.__table__])
 

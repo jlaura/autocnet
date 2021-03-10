@@ -1597,3 +1597,125 @@ def subpixel_register_points(subpixel_template_kwargs={'image_size':(251,251)},
                                 subpixel_template_kwargs=subpixel_template_kwargs,
                                 **cost_kwargs)
 
+def register_to_base(pointid,
+                     base_image,
+                     cost_func=lambda x, y: y == np.max(x),
+                     ncg=None,
+                     geom_func='simple',
+                     geom_kwargs={"size_x": 16, "size_y": 16},
+                     match_func='classic',
+                     match_kwargs={},
+                     verbose=False,
+                     **kwargs):
+    """
+    """
+
+    if not ncg.Session:
+     raise BrokenPipeError('This func requires a database session from a NetworkCandidateGraph.')
+
+    geom_func = check_geom_func(geom_func)
+    match_func = check_match_func(match_func)
+    session = ncg.Session()
+
+    if isinstance(base_image, str):
+        base_image = GeoDataset(base_image)
+
+    if isinstance(pointid, Points):
+        point = pointid
+        pointid = pointid.id
+
+    with ncg.session_scope() as session:
+        if isinstance(pointid, Points):
+            point = pointid
+            pointid = point.id
+        else:
+            point = session.query(Points).filter(Points.id == pointid).one()
+        
+        # Get all of the measures associated with the given point
+        measures = point.measures
+
+        # Attempt to project the point into the base image
+        bpoint = spatial.isis.point_info(base_image.file_name, point.geom.x, point.geom.y, 'ground')
+        if bpoint is None:
+            print('unable to find point in ground image')
+            # Need to set the point to False
+            return
+        bline = bpoint[0].get('Line')
+        bsample = bpoint[0].get('Sample')
+
+        # Setup a cache so that we can get the file handles one time instead of 
+        # once per measure in the measures list.
+        image_cache = {}
+
+        # list of matching results in the format:
+        # [measure_id, measure_index, x_offset, y_offset, offset_magnitude]
+        match_results = []
+
+        # Step over all of the measures (images) that are not the base image
+        for measure_index, measure in enumerate(measures):
+            res = session.query(Images).filter(Images.id == measure.imageid).one()
+            try:
+                measure_image = image_cache[res.id]
+            except:
+                measure_image = GeoDataset(measure_image.path)
+                image_cache[res.id] = measure_image
+
+            # Attempt to match the base 
+            try:
+                print(f'prop point: base_image: {base_image}')
+                print(f'prop point: dest_image: {measure_image}')
+                print(f'prop point: (sx, sy): ({measure.sample}, {measure.line})')
+                x, y, dist, metrics = geom_func(base_image, measure_image,
+                        bsample, bline,
+                        match_func = match_func,
+                        match_kwargs = match_kwargs,
+                        verbose=verbose,
+                        **geom_kwargs)
+
+            except Exception as e:
+                raise Exception(e)
+                match_results.append(e)
+                continue
+
+            match_results.append([measure.id, measure_index, x, y,
+                                 metrics, dist, base_image.file_name, measure_image.file_name])
+
+    if verbose:
+      print("Match Results: ", match_results)
+
+    # Clean out any instances where None has been return by the geom matcher.
+    match_results = np.copy(np.array([res for res in match_results if isinstance(res, list) and all(r is not None for r in res)]))
+
+    # If all of the results are None, this point was not matchable
+    if match_results.shape[0] == 0:
+        raise Exception("Point with id {pointid} has no measure that matches criteria, reference measure will remain unchanged")
+
+    # Compute the cost function for each match using the 
+    costs = [cost_func(match_results[:,3], match[3]) for match in match_results]
+
+    if verbose:
+      print("Values:", costs)
+
+    # column index 3 is the metric returned by the geom matcher
+    best_results = match_results[np.argmax(costs)]
+
+    if verbose:
+        print("match_results final length: ", len(match_results))
+        print("best_results length: ", len(best_results))
+        print("Full results: ", best_results)
+        print("Winning CORRs: ", best_results[3], "Base Pixel shifts: ", best_results[4])
+        print('\n')
+
+    if len(best_results[3])==1 or best_results[3] is None:
+        raise Exception("Point with id {pointid} has no measure that matches criteria, reference measure will remain unchanged")
+
+    # Finally, update the point that will be the reference
+    with ncg.session_scope() as session:
+       measure = session.query(Measures).filter(Measures.id == best_results[0]).one()
+       measure.sample = best_results[2]
+       measure.line = best_results[3]
+
+       point = session.query(Points).filter(Points.id == pointid).one()
+       point.ref_measure = best_results[1]
+    return
+    
